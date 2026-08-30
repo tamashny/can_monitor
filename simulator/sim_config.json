@@ -1,0 +1,6 @@
+{
+  "port": "COM10",
+  "baudrate": 115200,
+  "enable_logging": true,
+  "log_file": "simulator_log.jsonl"
+}

@@ -1,0 +1,11 @@
+{
+  "can": {
+    "interface": "slcan",
+    "port": "CNCA0",
+    "serial_baudrate": 115200,
+    "can_bitrate": 500000
+  },
+  "logging": {
+    "raw_log_file": "data/raw_can.jsonl"
+  }
+}
