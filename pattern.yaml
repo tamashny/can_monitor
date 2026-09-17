@@ -1,0 +1,54 @@
+layout:
+
+  columns:
+    - 3
+    - 2
+    - 2
+    - 2
+
+  rows: 9
+
+  areas:
+
+    - [A, D, E, F]
+    - [B, D, E, F]
+    - [B, D, E, F]
+    - [C, G, G, G]
+    - [C, H, H, H]
+    - [C, I, I, I]
+    - [C, I, I, I]
+    - [C, I, I, I]
+    - [J, I, I, I]
+
+
+cells:
+
+  A:
+    title: "CAN status"
+
+  B:
+    title: "EC status"
+
+  C:
+    title: "Systems states"
+
+  D:
+    title: "SoC"
+
+  E:
+    title: "V I T"
+
+  F:
+    title: "Converter"
+
+  G:
+    title: "Contactors"
+
+  H:
+    title: "Coolling system"
+
+  I:
+    title: "Cells map"
+
+  J:
+    title: "Command line"
