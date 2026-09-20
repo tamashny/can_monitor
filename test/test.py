@@ -33,25 +33,18 @@ ui.query('body').style(
     color: #FFFFFF;
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 16px;
+    line-height: 1.5;
     '''
 )
 
 # =================================================
-# PARAMETERS
-# =================================================
-
-parameters = {
-    "converter_mode": "NO DATA",
-    "soc": 200,
-    "soh": 200,
-    "voltage1": 800,
-    "current1": 100,
-    "temperature1": 20,
-}
-
-# =================================================
 # DEFINES
 # =================================================
+
+CONVERTER_LINK_MAX = 50
+CAPACITORS_LINK_MAX = 50
+ISOLATION_LINK_MAX = 100
+COOLING_LINK_MAX = 100
 
 SOC_MIN = 0
 SOC_MAX = 100
@@ -91,8 +84,107 @@ TEMPERATURE_WHITE_MAX = 40
 TEMPERATURE_YELLOW_MAX = 60
 
 # =================================================
+# PARAMETERS
+# =================================================
+
+parameters = {
+    "ec_state": "OK",
+    "ec_warnings": 2,
+    "ec_errors": 0,
+    "ec_cycles": 12543,
+
+    "converter_state": "OK",
+    "converter_errors": 0,
+    "converter_link": 35,
+
+    "capacitors_state": "WARN",
+    "capacitors_errors": 2,
+    "capacitors_link": 48,
+
+    "isolation_state": "NONE",
+    "isolation_errors": 0,
+    "isolation_link": 600,
+
+    "cooling_state": "ALARM",
+    "cooling_errors": 1,
+    "cooling_link": 120,
+
+    "converter_mode": "NONE",
+    "soc": 200,
+    "soh": 200,
+    "voltage1": 800,
+    "current1": 100,
+    "temperature1": 20,
+
+    "contactor1": "CLOSED",
+    "contactor2": "OPEN",
+
+    "fan1_rpm": 1200,
+    "fan2_rpm": 1180,
+    "fan3_rpm": 1210,
+    "fan4_rpm": 1190,
+    "fan5_rpm": 1200,
+    "fan6_rpm": 1170,
+    "shutters": "OPEN",
+}
+
+systems = [
+    (
+        "converter",
+        "converter_state",
+        "converter_errors",
+        "converter_link",
+        CONVERTER_LINK_MAX,
+    ),
+    (
+        "capacitors",
+        "capacitors_state",
+        "capacitors_errors",
+        "capacitors_link",
+        CAPACITORS_LINK_MAX,
+    ),
+    (
+        "isolation",
+        "isolation_state",
+        "isolation_errors",
+        "isolation_link",
+        ISOLATION_LINK_MAX,
+    ),
+    (
+        "cooling",
+        "cooling_state",
+        "cooling_errors",
+        "cooling_link",
+        COOLING_LINK_MAX,
+    ),
+]
+
+# =================================================
 # FUNCTIONS
 # =================================================
+
+def link_value(value, maximum):
+
+    if value > maximum:
+        return "None"
+
+    return f"{value} ms"
+
+def state_color(state):
+
+    if state == "NONE":
+        return '#666666'
+
+    if state == "OK":
+        return '#7fd36b'
+
+    if state == "WARN":
+        return '#ffd166'
+
+    if state == "ALARM":
+        return '#ff6b7a'
+
+    return '#666666'
 
 def soc_color(value):
 
@@ -168,6 +260,99 @@ def get_segments(value, minimum, maximum, minimum_segments=0):
     )
 
     return max(segments, minimum_segments)
+
+def contactor_color(state):
+    if state == "CLOSED":
+        return '#7fd36b'
+    if state == "OPEN":
+        return '#ffd166'
+    return '#666666'
+
+# =====================================================
+# CSS
+# =====================================================
+
+ui.add_css('''
+/* =====================================================
+   COMMAND LIST
+   ===================================================== */
+
+.command-list .q-btn {
+    color: #FFFFFF !important;
+
+    font-family: "DejaVu Sans Mono", monospace !important;
+    font-size: 16px !important;
+    line-height: 1.5 !important;
+
+    text-transform: none !important;
+
+    justify-content: flex-start !important;
+    text-align: left !important;
+
+    height: 27px !important;
+    min-height: 27px !important;
+
+    padding: 0 8px !important;
+}
+
+.command-list .q-btn__content {
+    color: #FFFFFF !important;
+
+    justify-content: flex-start !important;
+    text-align: left !important;
+
+    width: 100% !important;
+}
+
+
+/* =====================================================
+   COMMAND INPUT
+   ===================================================== */
+
+.command-input input,
+.command-input .q-field__native {
+    color: #FFFFFF !important;
+    caret-color: #FFFFFF !important;
+
+    font-family: "DejaVu Sans Mono", monospace !important;
+    font-size: 16px !important;
+
+    text-transform: none !important;
+}
+
+.command-input input::placeholder,
+.command-input .q-field__native::placeholder {
+    color: #888888 !important;
+    opacity: 1 !important;
+}
+
+
+/* =====================================================
+   REMOVE BLUE FOCUS OUTLINE
+   ===================================================== */
+
+.command-input .q-field__control:before,
+.command-input .q-field__control:after {
+    border-color: #7C7C7C !important;
+    box-shadow: none !important;
+}
+
+.command-input.q-field--focused .q-field__control:before,
+.command-input.q-field--focused .q-field__control:after {
+    border-color: #7C7C7C !important;
+    box-shadow: none !important;
+}
+
+
+/* =====================================================
+   INPUT BACKGROUND
+   ===================================================== */
+
+.command-input .q-field__control {
+    background: #0C0C0C !important;
+}
+''')
+
 # =================================================
 # GRID SETTINGS
 # =================================================
@@ -217,13 +402,55 @@ with ui.element('div').classes(
             f'''
             grid-area: {name};
 
+            position: relative;
+            overflow: visible;
+
             border: 1px solid #7C7C7C;
             border-radius: 10px;
             padding: 15px;
+
+            box-sizing: border-box;
             '''
         ):
+            
+            if cell["title"] == "CAN status":
+                ui.label('CAN-BUS: VCAN,    500 kbit/s')
 
-            if cell["title"] == "Converter":
+            elif cell["title"] == "EC status":
+
+                # EC status
+                with ui.element('div').classes('flex items-center'):
+                    state = parameters["ec_state"]
+
+                    with ui.element('div').style(
+                        f'''
+                        width: 12px;
+                        height: 12px;
+                        border-radius: 50%;
+                        background: {state_color(state)};
+                        margin-right: 6px;
+                        '''
+                    ):
+                        pass
+
+                    ui.label(f'EC status: {state}')
+
+                # Warnings / Errors
+                with ui.element('div').classes('flex items-center'):
+                    ui.label(
+                        f'Warnings: {parameters["ec_warnings"]}'
+                    ).style('margin-right: 20px;')
+
+                    ui.label(
+                        f'Errors: {parameters["ec_errors"]}'
+                    )
+
+                # Full cycles
+                ui.label(
+                    f'Full cycles: {parameters["ec_cycles"]}'
+                )
+
+            elif cell["title"] == "Converter":
 
                 ui.label(
                     f'Converter: {parameters["converter_mode"]}'
@@ -236,6 +463,55 @@ with ui.element('div').classes(
                 ui.label(
                     f'{parameters["current1"]} A'
                 )
+
+            elif cell["title"] == "Systems states":
+
+                with ui.element('div').style(
+                    '''
+                    display: grid;
+                    grid-template-columns: 2fr 3fr 2fr 2fr;
+                    width: 100%;
+                    '''
+                ):
+
+                    ui.label('State')
+                    ui.label('System')
+                    ui.label('Errors')
+                    ui.label('Link')
+
+                    for name, state_key, errors_key, link_key, link_max in systems:
+
+                        state = parameters[state_key]
+
+                        with ui.element('div').classes('flex items-center'):
+
+                            with ui.element('div').style(
+                                f'''
+                                width: 12px;
+                                height: 12px;
+                                border-radius: 50%;
+                                background: {state_color(state)};
+                                margin-right: 5px;
+                                '''
+                            ):
+                                pass
+
+                            ui.label(state)
+
+                        ui.label(name)
+
+                        errors = parameters[errors_key]
+
+                        ui.label(
+                            'None' if errors == 0 else str(errors)
+                        )
+
+                        ui.label(
+                            link_value(
+                                parameters[link_key],
+                                link_max
+                            )
+                        )
 
             elif cell["title"] == "SoC":
 
@@ -267,8 +543,8 @@ with ui.element('div').classes(
 
                         ui.element('div').style(
                             f'''
-                            width: 15px;
-                            height: 15px;
+                            width: 12px;
+                            height: 12px;
                             margin-right: 5px;
                             background: {background};
                             '''
@@ -307,8 +583,8 @@ with ui.element('div').classes(
 
                         ui.element('div').style(
                             f'''
-                            width: 15px;
-                            height: 15px;
+                            width: 12px;
+                            height: 12px;
                             margin-right: 5px;
                             background: {background};
                             '''
@@ -347,8 +623,8 @@ with ui.element('div').classes(
 
                         ui.element('div').style(
                             f'''
-                            width: 15px;
-                            height: 15px;
+                            width: 12px;
+                            height: 12px;
                             margin-right: 5px;
                             background: {background};
                             '''
@@ -385,8 +661,8 @@ with ui.element('div').classes(
 
                         ui.element('div').style(
                             f'''
-                            width: 15px;
-                            height: 15px;
+                            width: 12px;
+                            height: 12px;
                             margin-right: 5px;
                             background: {background};
                             '''
@@ -424,8 +700,8 @@ with ui.element('div').classes(
 
                         ui.element('div').style(
                             f'''
-                            width: 15px;
-                            height: 15px;
+                            width: 12px;
+                            height: 12px;
                             margin-right: 5px;
                             background: {background};
                             '''
@@ -434,6 +710,174 @@ with ui.element('div').classes(
                     ui.label(
                         f'{temperature:.0f}C'
                     ).classes('ml-auto')
+
+            elif cell["title"] == "Contactors":
+
+                with ui.element('div').classes('flex items-center'):
+
+                    # Contactor 1
+                    state = parameters["contactor1"]
+
+                    with ui.element('div').classes('flex items-center').style(
+                        'margin-right: 25px;'
+                    ):
+                        with ui.element('div').style(
+                            f'''
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 50%;
+                            background: {contactor_color(state)};
+                            margin-right: 6px;
+                            '''
+                        ):
+                            pass
+
+                        ui.label(f'C1: {state}')
+
+                    # Contactor 2
+                    state = parameters["contactor2"]
+
+                    with ui.element('div').classes('flex items-center'):
+                        with ui.element('div').style(
+                            f'''
+                            width: 12px;
+                            height: 12px;
+                            border-radius: 50%;
+                            background: {contactor_color(state)};
+                            margin-right: 6px;
+                            '''
+                        ):
+                            pass
+
+                        ui.label(f'C2: {state}')
+
+            elif cell["title"] == "Coolling system":
+
+                with ui.element('div').classes('flex items-center'):
+
+                    ui.label(f'F1: {parameters["fan1_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'F2: {parameters["fan2_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'F3: {parameters["fan3_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'F4: {parameters["fan4_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'F5: {parameters["fan5_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'F6: {parameters["fan6_rpm"]} RPM').style(
+                        'margin-right: 15px;'
+                    )
+
+                    ui.label(f'Sh: {parameters["shutters"]}')
+
+            elif cell["title"] == "Command line":
+
+                commands = [
+                    '/restart',
+                    '/close contactors',
+                    '/open contactors',
+                    '/status',
+                    '/shutdown',
+                    '/reset',
+                    '/start cooling',
+                    '/stop cooling',
+                ]
+
+                # =================================================
+                # COMMAND LINE CONTAINER
+                # =================================================
+
+                with ui.element('div').style(
+                    '''
+                    position: relative;
+                    width: 100%;
+                    '''
+                ):
+
+                    # =================================================
+                    # COMMAND LIST
+                    # =================================================
+
+                    with ui.element('div').classes(
+                        'command-list'
+                    ).style(
+                        '''
+                        position: absolute;
+
+                        left: 0;
+                        bottom: calc(100% + 5px);
+
+                        width: 100%;
+                        height: 72px;
+
+                        display: none;
+
+                        overflow-y: auto;
+                        overflow-x: hidden;
+
+                        background: #0C0C0C;
+
+                        border: 1px solid #7C7C7C;
+                        border-radius: 7px;
+
+                        box-sizing: border-box;
+
+                        z-index: 1000;
+                        '''
+                    ) as command_list:
+
+                        for command in commands:
+
+                            ui.button(
+                                command
+                            ).props(
+                                'flat dense'
+                            ).classes(
+                                'w-full justify-start'
+                            ).on(
+                                'click',
+                                lambda e, command=command:
+                                    command_input.set_value(command)
+                            )
+
+                    # =================================================
+                    # COMMAND INPUT
+                    # =================================================
+
+                    command_input = ui.input(
+                        placeholder='/Command line...'
+                    ).props(
+                        'outlined dense'
+                    ).classes(
+                        'w-full command-input'
+                    )
+
+                    # =================================================
+                    # OPEN COMMAND LIST
+                    # =================================================
+
+                    def open_commands():
+                        command_list.style(
+                            '''
+                            display: block;
+                            '''
+                        )
+
+                    command_input.on(
+                        'focus',
+                        lambda e: open_commands()
+                    )
 
             else:
 
