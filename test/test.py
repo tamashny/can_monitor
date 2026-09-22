@@ -110,11 +110,19 @@ parameters = {
     "cooling_link": 120,
 
     "converter_mode": "NONE",
-    "soc": 200,
-    "soh": 200,
-    "voltage1": 800,
-    "current1": 100,
-    "temperature1": 20,
+    "converter_v1": 300,
+    "converter_v2": 400,
+    "converter_i1": 100,
+    "converter_i2": 50,
+    "converter_contactor": "closed",
+
+    "soc": 30,
+    "soh": 30,
+    "storage_energy": 10,
+    "storage_energy_max": 20,
+    "voltage1": 300,
+    "current1": 0,
+    "temperature1": -2000,
 
     "contactor1": "CLOSED",
     "contactor2": "OPEN",
@@ -261,23 +269,56 @@ def get_segments(value, minimum, maximum, minimum_segments=0):
 
     return max(segments, minimum_segments)
 
-def contactor_color(state):
-    if state == "CLOSED":
-        return '#7fd36b'
-    if state == "OPEN":
-        return '#ffd166'
-    return '#666666'
-
 # =====================================================
 # CSS
 # =====================================================
 
 ui.add_css('''
 /* =====================================================
-   COMMAND LIST
+   COMMAND LIST SCROLLBAR
+   ===================================================== */
+
+.command-list {
+    scrollbar-width: auto;
+    scrollbar-color: #555555 #1C1C1C;
+}
+
+/* Chrome / Edge / Chromium */
+
+.command-list::-webkit-scrollbar {
+    width: 16px;
+}
+
+.command-list::-webkit-scrollbar-track {
+    background: #1C1C1C;
+}
+
+.command-list::-webkit-scrollbar-thumb {
+    background: #555555;
+    border-radius: 5px;
+}
+
+.command-list::-webkit-scrollbar-thumb:hover {
+    background: #707070;
+}
+
+/* Убираем стрелки scrollbar */
+
+.command-list::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+
+/* =====================================================
+   COMMAND BUTTONS
    ===================================================== */
 
 .command-list .q-btn {
+    justify-content: flex-start !important;
+    text-align: left !important;
+
     color: #FFFFFF !important;
 
     font-family: "DejaVu Sans Mono", monospace !important;
@@ -286,28 +327,60 @@ ui.add_css('''
 
     text-transform: none !important;
 
-    justify-content: flex-start !important;
-    text-align: left !important;
+    width: 100% !important;
 
     height: 27px !important;
     min-height: 27px !important;
 
     padding: 0 8px !important;
+
+    border-radius: 0 !important;
 }
 
 .command-list .q-btn__content {
-    color: #FFFFFF !important;
-
     justify-content: flex-start !important;
     text-align: left !important;
 
     width: 100% !important;
+
+    color: #FFFFFF !important;
 }
 
 
 /* =====================================================
    COMMAND INPUT
    ===================================================== */
+
+.command-input {
+    background: #1C1C1C !important;
+    border-radius: 10px !important;
+    overflow: hidden !important;
+}
+
+.command-input.command-input-open {
+    border-radius: 0 0 10px 10px !important;
+}
+
+.command-input .q-field__control {
+    background: transparent !important;
+
+    padding: 0 16px !important;
+
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.command-input .q-field__control:before,
+.command-input .q-field__control:after {
+    border: none !important;
+    box-shadow: none !important;
+}
+
+.command-input.q-field--focused .q-field__control:before,
+.command-input.q-field--focused .q-field__control:after {
+    border: none !important;
+    box-shadow: none !important;
+}
 
 .command-input input,
 .command-input .q-field__native {
@@ -325,32 +398,6 @@ ui.add_css('''
     color: #888888 !important;
     opacity: 1 !important;
 }
-
-
-/* =====================================================
-   REMOVE BLUE FOCUS OUTLINE
-   ===================================================== */
-
-.command-input .q-field__control:before,
-.command-input .q-field__control:after {
-    border-color: #7C7C7C !important;
-    box-shadow: none !important;
-}
-
-.command-input.q-field--focused .q-field__control:before,
-.command-input.q-field--focused .q-field__control:after {
-    border-color: #7C7C7C !important;
-    box-shadow: none !important;
-}
-
-
-/* =====================================================
-   INPUT BACKGROUND
-   ===================================================== */
-
-.command-input .q-field__control {
-    background: #0C0C0C !important;
-}
 ''')
 
 # =================================================
@@ -359,22 +406,22 @@ ui.add_css('''
 
 if isinstance(columns, list):
     grid_columns = " ".join(
-        f"{value}fr"
+        f"minmax(0, {value}fr)"
         for value in columns
     )
 else:
     grid_columns = " ".join(
-        ["1fr"] * columns
+        ["minmax(0, 1fr)"] * columns
     )
 
 if isinstance(rows, list):
     grid_rows = " ".join(
-        f"{value}fr"
+        f"minmax(0, {value}fr)"
         for value in rows
     )
 else:
     grid_rows = " ".join(
-        ["1fr"] * rows
+        ["minmax(0, 1fr)"] * rows
     )
 
 grid_areas = " ".join(
@@ -398,6 +445,12 @@ with ui.element('div').classes(
 
     for name, cell in cells.items():
 
+        is_command_line = cell["title"] == "Command line"
+
+        no_border_titles = ("Command line", "CAN status")
+        cell_border = 'none' if cell["title"] in no_border_titles else '1px solid #7C7C7C'
+        cell_flex = 'display: flex; align-items: center; justify-content: center;' if is_command_line else ''
+
         with ui.element('div').style(
             f'''
             grid-area: {name};
@@ -405,9 +458,14 @@ with ui.element('div').classes(
             position: relative;
             overflow: visible;
 
-            border: 1px solid #7C7C7C;
+            min-width: 0;
+            min-height: 0;
+
+            border: {cell_border};
             border-radius: 10px;
             padding: 15px;
+
+            {cell_flex}
 
             box-sizing: border-box;
             '''
@@ -453,15 +511,19 @@ with ui.element('div').classes(
             elif cell["title"] == "Converter":
 
                 ui.label(
-                    f'Converter: {parameters["converter_mode"]}'
+                    f'Converter mode: {parameters["converter_mode"].capitalize()}'
                 )
 
                 ui.label(
-                    f'{parameters["voltage1"]} V'
+                    f'U1 {parameters["converter_v1"]}V < {parameters["converter_v2"]}V U2'
                 )
 
                 ui.label(
-                    f'{parameters["current1"]} A'
+                    f'I1 {parameters["converter_i1"]}A -> {parameters["converter_i2"]}A I2'
+                )
+
+                ui.label(
+                    f'Contactor {parameters["converter_contactor"]}'
                 )
 
             elif cell["title"] == "Systems states":
@@ -594,6 +656,15 @@ with ui.element('div').classes(
                         f'{soh:.0f}%'
                     ).classes('ml-auto')
 
+                # Storage energy
+                ui.label(
+                    f'Storage energy: {parameters["storage_energy"]} kWh'
+                )
+
+                ui.label(
+                    f'Max storage energy: {parameters["storage_energy_max"]} kWh'
+                )
+
             elif cell["title"] == "V I T":
 
                 # Voltage
@@ -713,73 +784,25 @@ with ui.element('div').classes(
 
             elif cell["title"] == "Contactors":
 
-                with ui.element('div').classes('flex items-center'):
-
-                    # Contactor 1
-                    state = parameters["contactor1"]
-
-                    with ui.element('div').classes('flex items-center').style(
-                        'margin-right: 25px;'
-                    ):
-                        with ui.element('div').style(
-                            f'''
-                            width: 12px;
-                            height: 12px;
-                            border-radius: 50%;
-                            background: {contactor_color(state)};
-                            margin-right: 6px;
-                            '''
-                        ):
-                            pass
-
-                        ui.label(f'C1: {state}')
-
-                    # Contactor 2
-                    state = parameters["contactor2"]
-
-                    with ui.element('div').classes('flex items-center'):
-                        with ui.element('div').style(
-                            f'''
-                            width: 12px;
-                            height: 12px;
-                            border-radius: 50%;
-                            background: {contactor_color(state)};
-                            margin-right: 6px;
-                            '''
-                        ):
-                            pass
-
-                        ui.label(f'C2: {state}')
+                ui.label(
+                    f'Contactor 1: {parameters["contactor1"].lower()} | '
+                    f'Contactor 2: {parameters["contactor2"].lower()}'
+                )
 
             elif cell["title"] == "Coolling system":
 
-                with ui.element('div').classes('flex items-center'):
+                fan_parts = [
+                    f'F{i}:{parameters[f"fan{i}_rpm"]}rpm'
+                    for i in range(1, 7)
+                ]
 
-                    ui.label(f'F1: {parameters["fan1_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
+                fan_parts.append(
+                    f'Sh:{parameters["shutters"]}'
+                )
 
-                    ui.label(f'F2: {parameters["fan2_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
-
-                    ui.label(f'F3: {parameters["fan3_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
-
-                    ui.label(f'F4: {parameters["fan4_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
-
-                    ui.label(f'F5: {parameters["fan5_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
-
-                    ui.label(f'F6: {parameters["fan6_rpm"]} RPM').style(
-                        'margin-right: 15px;'
-                    )
-
-                    ui.label(f'Sh: {parameters["shutters"]}')
+                ui.label(
+                    ' | '.join(fan_parts)
+                )
 
             elif cell["title"] == "Command line":
 
@@ -795,13 +818,30 @@ with ui.element('div').classes(
                 ]
 
                 # =================================================
+                # CLICK-OUTSIDE OVERLAY
+                # =================================================
+
+                click_outside_overlay = ui.element('div').style(
+                    '''
+                    position: fixed;
+                    inset: 0;
+
+                    display: none;
+
+                    z-index: 999;
+                    '''
+                )
+
+                # =================================================
                 # COMMAND LINE CONTAINER
                 # =================================================
 
                 with ui.element('div').style(
                     '''
                     position: relative;
-                    width: 100%;
+                    width: calc(100% - 20px);
+
+                    z-index: 1000;
                     '''
                 ):
 
@@ -809,47 +849,58 @@ with ui.element('div').classes(
                     # COMMAND LIST
                     # =================================================
 
-                    with ui.element('div').classes(
-                        'command-list'
-                    ).style(
+                    with ui.element('div').style(
                         '''
                         position: absolute;
 
                         left: 0;
-                        bottom: calc(100% + 5px);
+                        right: 0;
+
+                        bottom: 100%;
 
                         width: 100%;
-                        height: 72px;
+
+                        height: 144px;
 
                         display: none;
 
-                        overflow-y: auto;
-                        overflow-x: hidden;
+                        background: #1C1C1C;
 
-                        background: #0C0C0C;
-
-                        border: 1px solid #7C7C7C;
-                        border-radius: 7px;
+                        border: none;
+                        border-radius: 10px 10px 0 0;
 
                         box-sizing: border-box;
+                        overflow: hidden;
 
                         z-index: 1000;
                         '''
                     ) as command_list:
 
-                        for command in commands:
+                        with ui.element('div').classes(
+                            'command-list'
+                        ).style(
+                            '''
+                            width: 100%;
+                            height: 100%;
 
-                            ui.button(
-                                command
-                            ).props(
-                                'flat dense'
-                            ).classes(
-                                'w-full justify-start'
-                            ).on(
-                                'click',
-                                lambda e, command=command:
-                                    command_input.set_value(command)
-                            )
+                            overflow-y: auto;
+                            overflow-x: hidden;
+                            '''
+                        ):
+
+                            for command in commands:
+
+                                ui.button(
+                                    command
+                                ).props(
+                                    'flat dense'
+                                ).classes(
+                                    'w-full justify-start'
+                                ).on(
+                                    'click',
+                                    lambda e, command=command:
+                                        command_input.set_value(command)
+                                )
 
                     # =================================================
                     # COMMAND INPUT
@@ -858,7 +909,7 @@ with ui.element('div').classes(
                     command_input = ui.input(
                         placeholder='/Command line...'
                     ).props(
-                        'outlined dense'
+                        'borderless dense'
                     ).classes(
                         'w-full command-input'
                     )
@@ -874,9 +925,72 @@ with ui.element('div').classes(
                             '''
                         )
 
+                        command_input.classes(
+                            add='command-input-open'
+                        )
+
+                        click_outside_overlay.style(
+                            '''
+                            display: block;
+                            '''
+                        )
+
+                    # =================================================
+                    # CLOSE COMMAND LIST
+                    # =================================================
+
+                    def close_commands():
+                        command_list.style(
+                            '''
+                            display: none;
+                            '''
+                        )
+
+                        command_input.classes(
+                            remove='command-input-open'
+                        )
+
+                        click_outside_overlay.style(
+                            '''
+                            display: none;
+                            '''
+                        )
+
+                        command_input.set_value('')
+
+                        command_input.run_method(
+                            'blur'
+                        )
+
+                    # =================================================
+                    # OPEN ON FOCUS
+                    # =================================================
+
                     command_input.on(
                         'focus',
                         lambda e: open_commands()
+                    )
+
+                    # =================================================
+                    # CLICK OUTSIDE — CLOSE COMMAND LINE
+                    # =================================================
+
+                    click_outside_overlay.on(
+                        'click',
+                        lambda e: close_commands()
+                    )
+
+                    # =================================================
+                    # ESC — CLOSE COMMAND LINE (even while typing)
+                    # =================================================
+
+                    def handle_key(e):
+                        if e.action.keydown and e.key == 'Escape':
+                            close_commands()
+
+                    ui.keyboard(
+                        on_key=handle_key,
+                        ignore=[]
                     )
 
             else:
