@@ -2,10 +2,10 @@ from pathlib import Path
 
 from nicegui import ui
 
-from cells import cell_style, render_cell
-from layout import build_grid_template, load_pattern
-from parameters import PARAMETERS
-from styles import apply_global_styles
+from .cells import cell_style, render_cell
+from .layout import build_grid_template, load_pattern
+from .parameters import PARAMETERS
+from .styles import apply_global_styles
 
 PATTERN_FILE = Path(__file__).resolve().parent.parent / "pattern.yaml"
 

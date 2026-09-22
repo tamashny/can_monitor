@@ -1,4 +1,4 @@
-from config import (
+from .config import (
     CURRENT_GREEN_MAX,
     CURRENT_YELLOW_MAX,
     SOC_RED_MAX,

@@ -1,6 +1,6 @@
 from nicegui import ui
 
-from colors import (
+from .colors import (
     current_color,
     soc_color,
     soh_color,
@@ -8,8 +8,8 @@ from colors import (
     temperature_color,
     voltage_color,
 )
-from command_line import build_command_line
-from config import (
+from .command_line import build_command_line
+from .config import (
     CURRENT_MAX,
     CURRENT_MIN,
     SOC_MAX,
@@ -21,8 +21,8 @@ from config import (
     VOLTAGE_MAX,
     VOLTAGE_MIN,
 )
-from helpers import get_segments, link_value
-from parameters import SYSTEMS
+from .helpers import get_segments, link_value
+from .parameters import SYSTEMS
 
 NO_BORDER_TITLES = ("Command line", "CAN status")
 

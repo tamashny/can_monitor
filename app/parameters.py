@@ -4,7 +4,7 @@ All values start zeroed / neutral — they are overwritten at runtime by the
 external program that feeds this dashboard (CAN reader, simulator, etc.).
 """
 
-from config import (
+from .config import (
     CAPACITORS_LINK_MAX,
     CONVERTER_LINK_MAX,
     COOLING_LINK_MAX,
