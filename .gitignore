@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# Logs / runtime data
+data/
+*.jsonl
+*.log
+
+# NiceGUI
+.nicegui/
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store

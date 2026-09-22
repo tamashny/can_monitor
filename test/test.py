@@ -29,8 +29,8 @@ ui.query('.nicegui-content').style(
 
 ui.query('body').style(
     '''
-    background: #0C0C0C;
-    color: #FFFFFF;
+    background: var(--bg-color);
+    color: var(--fg-color);
     font-family: "DejaVu Sans Mono", monospace;
     font-size: 16px;
     line-height: 1.5;
@@ -275,12 +275,38 @@ def get_segments(value, minimum, maximum, minimum_segments=0):
 
 ui.add_css('''
 /* =====================================================
+   THEME VARIABLES
+   ===================================================== */
+
+:root {
+    --bg-color: #0C0C0C;
+    --fg-color: #FFFFFF;
+    --border-color: #7C7C7C;
+    --panel-bg: #1C1C1C;
+    --placeholder-color: #888888;
+    --segment-off-color: #444444;
+    --scrollbar-thumb: #555555;
+    --scrollbar-thumb-hover: #707070;
+}
+
+body.theme-light {
+    --bg-color: #F2F2F2;
+    --fg-color: #111111;
+    --border-color: #A0A0A0;
+    --panel-bg: #E2E2E2;
+    --placeholder-color: #666666;
+    --segment-off-color: #CCCCCC;
+    --scrollbar-thumb: #B0B0B0;
+    --scrollbar-thumb-hover: #909090;
+}
+
+/* =====================================================
    COMMAND LIST SCROLLBAR
    ===================================================== */
 
 .command-list {
     scrollbar-width: auto;
-    scrollbar-color: #555555 #1C1C1C;
+    scrollbar-color: var(--scrollbar-thumb) var(--panel-bg);
 }
 
 /* Chrome / Edge / Chromium */
@@ -290,16 +316,16 @@ ui.add_css('''
 }
 
 .command-list::-webkit-scrollbar-track {
-    background: #1C1C1C;
+    background: var(--panel-bg);
 }
 
 .command-list::-webkit-scrollbar-thumb {
-    background: #555555;
+    background: var(--scrollbar-thumb);
     border-radius: 5px;
 }
 
 .command-list::-webkit-scrollbar-thumb:hover {
-    background: #707070;
+    background: var(--scrollbar-thumb-hover);
 }
 
 /* Убираем стрелки scrollbar */
@@ -319,7 +345,7 @@ ui.add_css('''
     justify-content: flex-start !important;
     text-align: left !important;
 
-    color: #FFFFFF !important;
+    color: var(--fg-color) !important;
 
     font-family: "DejaVu Sans Mono", monospace !important;
     font-size: 16px !important;
@@ -343,7 +369,7 @@ ui.add_css('''
 
     width: 100% !important;
 
-    color: #FFFFFF !important;
+    color: var(--fg-color) !important;
 }
 
 
@@ -352,7 +378,7 @@ ui.add_css('''
    ===================================================== */
 
 .command-input {
-    background: #1C1C1C !important;
+    background: var(--panel-bg) !important;
     border-radius: 10px !important;
     overflow: hidden !important;
 }
@@ -384,8 +410,8 @@ ui.add_css('''
 
 .command-input input,
 .command-input .q-field__native {
-    color: #FFFFFF !important;
-    caret-color: #FFFFFF !important;
+    color: var(--fg-color) !important;
+    caret-color: var(--fg-color) !important;
 
     font-family: "DejaVu Sans Mono", monospace !important;
     font-size: 16px !important;
@@ -395,7 +421,7 @@ ui.add_css('''
 
 .command-input input::placeholder,
 .command-input .q-field__native::placeholder {
-    color: #888888 !important;
+    color: var(--placeholder-color) !important;
     opacity: 1 !important;
 }
 ''')
@@ -448,7 +474,7 @@ with ui.element('div').classes(
         is_command_line = cell["title"] == "Command line"
 
         no_border_titles = ("Command line", "CAN status")
-        cell_border = 'none' if cell["title"] in no_border_titles else '1px solid #7C7C7C'
+        cell_border = 'none' if cell["title"] in no_border_titles else '1px solid var(--border-color)'
         cell_flex = 'display: flex; align-items: center; justify-content: center;' if is_command_line else ''
 
         with ui.element('div').style(
@@ -472,7 +498,15 @@ with ui.element('div').classes(
         ):
             
             if cell["title"] == "CAN status":
-                ui.label('CAN-BUS: VCAN,    500 kbit/s')
+
+                with ui.row().classes('w-full items-center justify-between'):
+
+                    ui.label('CAN-BUS: VCAN,    500 kbit/s')
+
+                    theme_toggle = ui.button(
+                        icon='dark_mode',
+                        on_click=lambda: toggle_theme(),
+                    ).props('flat dense round')
 
             elif cell["title"] == "EC status":
 
@@ -601,7 +635,7 @@ with ui.element('div').classes(
                         if i < segments:
                             background = color
                         else:
-                            background = '#444444'
+                            background = 'var(--segment-off-color)'
 
                         ui.element('div').style(
                             f'''
@@ -641,7 +675,7 @@ with ui.element('div').classes(
                         if i < segments:
                             background = color
                         else:
-                            background = '#444444'
+                            background = 'var(--segment-off-color)'
 
                         ui.element('div').style(
                             f'''
@@ -690,7 +724,7 @@ with ui.element('div').classes(
                         if i < segments:
                             background = color
                         else:
-                            background = '#444444'
+                            background = 'var(--segment-off-color)'
 
                         ui.element('div').style(
                             f'''
@@ -728,7 +762,7 @@ with ui.element('div').classes(
                         if i < segments:
                             background = color
                         else:
-                            background = '#444444'
+                            background = 'var(--segment-off-color)'
 
                         ui.element('div').style(
                             f'''
@@ -767,7 +801,7 @@ with ui.element('div').classes(
                         if i < segments:
                             background = color
                         else:
-                            background = '#444444'
+                            background = 'var(--segment-off-color)'
 
                         ui.element('div').style(
                             f'''
@@ -864,7 +898,7 @@ with ui.element('div').classes(
 
                         display: none;
 
-                        background: #1C1C1C;
+                        background: var(--panel-bg);
 
                         border: none;
                         border-radius: 10px 10px 0 0;
@@ -996,5 +1030,23 @@ with ui.element('div').classes(
             else:
 
                 ui.label(cell["title"])
+
+# =================================================
+# THEME TOGGLE
+# =================================================
+
+is_light_theme = False
+
+def toggle_theme():
+    global is_light_theme
+
+    is_light_theme = not is_light_theme
+
+    if is_light_theme:
+        ui.query('body').classes(add='theme-light')
+        theme_toggle.set_icon('light_mode')
+    else:
+        ui.query('body').classes(remove='theme-light')
+        theme_toggle.set_icon('dark_mode')
 
 ui.run()
