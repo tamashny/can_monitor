@@ -1,7 +1,22 @@
-venv/
-.venv/
-.venv-1/
+# Python
 __pycache__/
-*.pyc
-.idea/
+*.py[cod]
+*.egg-info/
+
+# Virtual environment
+.venv/
+venv/
+
+# Logs / runtime data
+data/
+*.jsonl
+*.log
+
+# NiceGUI
+.nicegui/
+
+# Editor / OS
 .vscode/
+.idea/
+Thumbs.db
+.DS_Store
