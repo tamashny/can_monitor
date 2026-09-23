@@ -1,11 +1,17 @@
+import sys
 from pathlib import Path
+
+# Make the `frontend` package importable regardless of how this file is
+# invoked (direct script execution, `python -m`, or NiceGUI's reload
+# subprocess, which each populate sys.path differently).
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from nicegui import ui
 
-from .cells import cell_style, render_cell
-from .layout import build_grid_template, load_pattern
-from .parameters import PARAMETERS
-from .styles import apply_global_styles
+from frontend.cells import cell_style, render_cell
+from frontend.layout import build_grid_template, load_pattern
+from frontend.parameters import PARAMETERS
+from frontend.styles import apply_global_styles
 
 PATTERN_FILE = Path(__file__).resolve().parent.parent / "pattern.yaml"
 
@@ -42,3 +48,7 @@ def main():
         build_dashboard(pattern, PARAMETERS)
 
     ui.run()
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    main()
