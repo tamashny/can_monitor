@@ -1,4 +1,7 @@
 from .config import (
+    CELL_VOLTAGE_GREEN_MAX,
+    CELL_VOLTAGE_RED_LOW,
+    CELL_VOLTAGE_YELLOW,
     CURRENT_GREEN_MAX,
     CURRENT_YELLOW_MAX,
     SOC_RED_MAX,
@@ -14,6 +17,9 @@ from .config import (
     VOLTAGE_RED_LOW,
     VOLTAGE_YELLOW,
 )
+
+# Same as the "off" segments in VIT, follows the theme
+NO_DATA_COLOR = 'var(--segment-off-color)'
 
 
 def state_color(state):
@@ -64,6 +70,20 @@ def voltage_color(value):
         return '#ffd166'
 
     if value <= VOLTAGE_GREEN_MAX:
+        return '#7fd36b'
+
+    return '#ff6b7a'
+
+
+def cell_voltage_color(value):
+
+    if value < CELL_VOLTAGE_RED_LOW:
+        return '#ff6b7a'
+
+    if value < CELL_VOLTAGE_YELLOW:
+        return '#ffd166'
+
+    if value <= CELL_VOLTAGE_GREEN_MAX:
         return '#7fd36b'
 
     return '#ff6b7a'

@@ -3,6 +3,9 @@ import yaml
 
 CANMAP_FILE = "../canmap.yaml"
 
+# All bits set (0xFF in every byte) means "value not available"
+NO_DATA = "No data"
+
 
 # Load CAN protocol description
 with open(CANMAP_FILE, "r", encoding="utf-8") as file:
@@ -24,6 +27,16 @@ def find_frame(frame_id):
     return None
 
 
+def is_no_data(raw_data):
+    """
+    Check whether every byte of the field is 0xFF.
+    """
+
+    return len(raw_data) > 0 and all(
+        b == 0xFF for b in raw_data
+    )
+
+
 def decode_code(data, item):
     """
     Decode a code.
@@ -33,6 +46,9 @@ def decode_code(data, item):
     length = item["length"]
 
     raw_data = data[byte:byte + length]
+
+    if is_no_data(raw_data):
+        return NO_DATA
 
     value = int.from_bytes(
         raw_data,
@@ -58,6 +74,9 @@ def decode_metric(data, item):
 
     raw_data = data[byte:byte + length]
 
+    if is_no_data(raw_data):
+        return NO_DATA
+
     if item.get("byte_order") == "big_endian":
         value = int.from_bytes(
             raw_data,
@@ -68,6 +87,14 @@ def decode_metric(data, item):
             raw_data,
             byteorder="little"
         )
+
+    # Sign-magnitude ("прямой код"): MSB is the sign
+    if item.get("encoding") == "sign_magnitude":
+
+        sign_bit = 1 << (length * 8 - 1)
+
+        if value & sign_bit:
+            value = -(value & (sign_bit - 1))
 
     if "scale" in item:
 
@@ -96,11 +123,19 @@ def decode_bitfield(data, item):
 
     result = {}
 
+    if value == 0xFF:
+
+        for parameter in item["parameters"]:
+            result[parameter["parameter"]] = NO_DATA
+
+        return result
+
     for parameter in item["parameters"]:
 
         bit = parameter["bit"]
+        length = parameter.get("length", 1)
 
-        bit_value = (value >> bit) & 1
+        bit_value = (value >> bit) & ((1 << length) - 1)
 
         if "values" in parameter:
             bit_value = parameter["values"].get(

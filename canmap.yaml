@@ -166,7 +166,69 @@ map:
                 values:
                   0: OK
                   1: ALARM
-  
+
+      - id: 0x297
+        # sent on request (0x217), no fixed cycle
+
+        data:
+
+          - byte: 0
+            length: 1
+            type: bitfield
+            parameters:
+
+              - bit: 0
+                parameter: parse_type
+                values:
+                  0: VOLTAGE
+                  1: TEMPERATURE
+
+              - bit: 1
+                length: 7
+                parameter: parse_index
+
+          - byte: 1
+            length: 1
+            type: metric
+            parameter: parse_data_1
+            encoding: sign_magnitude
+
+          - byte: 2
+            length: 1
+            type: metric
+            parameter: parse_data_2
+            encoding: sign_magnitude
+
+          - byte: 3
+            length: 1
+            type: metric
+            parameter: parse_data_3
+            encoding: sign_magnitude
+
+          - byte: 4
+            length: 1
+            type: metric
+            parameter: parse_data_4
+            encoding: sign_magnitude
+
+          - byte: 5
+            length: 1
+            type: metric
+            parameter: parse_data_5
+            encoding: sign_magnitude
+
+          - byte: 6
+            length: 1
+            type: metric
+            parameter: parse_data_6
+            encoding: sign_magnitude
+
+          - byte: 7
+            length: 1
+            type: metric
+            parameter: parse_data_7
+            encoding: sign_magnitude
+
   - device: bup
 
     frames:

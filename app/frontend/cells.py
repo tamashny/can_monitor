@@ -1,6 +1,10 @@
+import math
+
 from nicegui import ui
 
 from .colors import (
+    NO_DATA_COLOR,
+    cell_voltage_color,
     current_color,
     soc_color,
     soh_color,
@@ -10,6 +14,8 @@ from .colors import (
 )
 from .command_line import build_command_line
 from .config import (
+    CELL_TEMPERATURE_COLUMNS,
+    CELL_VOLTAGE_COLUMNS,
     CURRENT_MAX,
     CURRENT_MIN,
     SOC_MAX,
@@ -21,7 +27,7 @@ from .config import (
     VOLTAGE_MAX,
     VOLTAGE_MIN,
 )
-from .helpers import get_segments, link_value
+from .helpers import cells_summary, get_segments, is_number, link_value
 from .parameters import SYSTEMS
 
 NO_BORDER_TITLES = ("Command line", "CAN status")
@@ -303,6 +309,78 @@ def render_cooling(parameters):
     )
 
 
+# mode: (parameters key, columns, unit, color function)
+CELLS_MAP_MODES = {
+    "voltage": ("cell_voltages", CELL_VOLTAGE_COLUMNS, "V", cell_voltage_color),
+    "temperature": ("cell_temperatures", CELL_TEMPERATURE_COLUMNS, "C", temperature_color),
+}
+
+
+def cells_map_summary(mode, values):
+
+    unit = CELLS_MAP_MODES[mode][2]
+
+    maximum, minimum, no_data = cells_summary(values)
+
+    if maximum is None:
+        parts = ['Max: —', 'Min: —']
+    else:
+        parts = [f'Max: {maximum:g}{unit}', f'Min: {minimum:g}{unit}']
+
+    if mode == "voltage":
+        imbalance = '—' if maximum is None else f'{maximum - minimum:g}{unit}'
+        parts.append(f'Imbalance: {imbalance}')
+
+    parts.append(f'No data: {no_data}')
+
+    return ' | '.join(parts)
+
+
+def render_cells_map(parameters):
+
+    @ui.refreshable
+    def cells_map_content(mode):
+
+        key, columns, unit, color = CELLS_MAP_MODES[mode]
+        values = parameters[key]
+        rows = math.ceil(len(values) / columns)
+
+        summary_label.set_text(
+            cells_map_summary(mode, values)
+        )
+
+        with ui.element('div').classes('cells-map-grid').style(
+            f'--cols: {columns}; --rows: {rows};'
+        ):
+
+            for number, value in enumerate(values, start=1):
+
+                if is_number(value):
+                    background = color(value)
+                    tooltip = f'Cell {number}: {value:g}{unit}'
+                else:
+                    background = NO_DATA_COLOR
+                    tooltip = f'Cell {number}: No data'
+
+                ui.element('div').classes('cells-map-cell').style(
+                    f'background: {background};'
+                ).tooltip(tooltip)
+
+    with ui.element('div').classes('cells-map'):
+
+        with ui.element('div').classes('cells-map-header'):
+
+            ui.toggle(
+                {"voltage": "Voltage", "temperature": "Temperature"},
+                value="voltage",
+                on_change=lambda e: cells_map_content.refresh(e.value),
+            ).props('flat dense no-caps').classes('cells-map-toggle')
+
+            summary_label = ui.label().classes('ml-auto')
+
+        cells_map_content("voltage")
+
+
 def render_default(cell):
     ui.label(cell["title"])
 
@@ -316,6 +394,7 @@ CELL_RENDERERS = {
     "V I T": render_v_i_t,
     "Contactors": render_contactors,
     "Coolling system": render_cooling,
+    "Cells map": render_cells_map,
 }
 
 

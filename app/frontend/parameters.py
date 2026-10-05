@@ -6,6 +6,8 @@ external program that feeds this dashboard (CAN reader, simulator, etc.).
 
 from .config import (
     CAPACITORS_LINK_MAX,
+    CELL_TEMPERATURE_COUNT,
+    CELL_VOLTAGE_COUNT,
     CONVERTER_LINK_MAX,
     COOLING_LINK_MAX,
     ISOLATION_LINK_MAX,
@@ -58,6 +60,10 @@ PARAMETERS = {
     "fan5_rpm": 0,
     "fan6_rpm": 0,
     "shutters": "CLOSED",
+
+    # Any non-numeric value is shown as "no data"
+    "cell_voltages": ["No data"] * CELL_VOLTAGE_COUNT,
+    "cell_temperatures": ["No data"] * CELL_TEMPERATURE_COUNT,
 }
 
 SYSTEMS = [

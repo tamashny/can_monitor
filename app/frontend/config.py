@@ -60,3 +60,18 @@ TEMPERATURE_BLUE_MAX = 0
 TEMPERATURE_CYAN_MAX = 10
 TEMPERATURE_WHITE_MAX = 40
 TEMPERATURE_YELLOW_MAX = 60
+
+# =================================================
+# CELLS MAP
+# =================================================
+
+CELL_VOLTAGE_COUNT = 70
+CELL_TEMPERATURE_COUNT = 105
+
+CELL_VOLTAGE_COLUMNS = 14
+CELL_TEMPERATURE_COLUMNS = 21
+
+# Placeholder thresholds, set real values
+CELL_VOLTAGE_RED_LOW = 8
+CELL_VOLTAGE_YELLOW = 10
+CELL_VOLTAGE_GREEN_MAX = 14

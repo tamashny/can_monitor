@@ -156,6 +156,63 @@ COMMAND_LINE_CSS = '''
 '''
 
 
+CELLS_MAP_CSS = '''
+/* =====================================================
+   CELLS MAP
+   ===================================================== */
+
+.cells-map {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+
+    width: 100%;
+    height: 100%;
+}
+
+.cells-map-header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+
+    flex-wrap: nowrap;
+}
+
+.cells-map-toggle {
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+}
+
+.cells-map-toggle .q-btn {
+    color: var(--fg-color) !important;
+    font-family: "DejaVu Sans Mono", monospace !important;
+    font-size: 16px !important;
+    padding: 0 10px !important;
+}
+
+.cells-map-toggle .q-btn[aria-pressed="true"] {
+    background: var(--segment-off-color) !important;
+}
+
+/* Grid stretches over the whole width and height left under the header */
+.cells-map-grid {
+    flex: 1;
+    min-height: 0;
+
+    display: grid;
+    grid-template-columns: repeat(var(--cols), 1fr);
+    grid-template-rows: repeat(var(--rows), 1fr);
+    gap: 4px;
+}
+
+/* Same look as the VIT segments: no border, no rounding */
+.cells-map-cell {
+    min-width: 0;
+    min-height: 0;
+}
+'''
+
+
 def apply_global_styles():
 
     # removing space around page
@@ -173,4 +230,4 @@ def apply_global_styles():
         '''
     )
 
-    ui.add_css(THEME_CSS + COMMAND_LINE_CSS)
+    ui.add_css(THEME_CSS + COMMAND_LINE_CSS + CELLS_MAP_CSS)
