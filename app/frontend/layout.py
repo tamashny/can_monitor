@@ -7,35 +7,33 @@ def load_pattern(pattern_file):
         return yaml.safe_load(file)
 
 
+def build_track(value):
+    """
+    Numbers are fr shares, strings ("auto", "48px") are CSS track sizes.
+    """
+
+    if isinstance(value, str):
+        return value
+
+    return f"minmax(0, {value}fr)"
+
+
+def build_tracks(tracks):
+
+    if isinstance(tracks, list):
+        return " ".join(build_track(value) for value in tracks)
+
+    return " ".join([build_track(1)] * tracks)
+
+
 def build_grid_template(layout):
 
-    columns = layout["columns"]
-    rows = layout["rows"]
-    areas = layout["areas"]
-
-    if isinstance(columns, list):
-        grid_columns = " ".join(
-            f"minmax(0, {value}fr)"
-            for value in columns
-        )
-    else:
-        grid_columns = " ".join(
-            ["minmax(0, 1fr)"] * columns
-        )
-
-    if isinstance(rows, list):
-        grid_rows = " ".join(
-            f"minmax(0, {value}fr)"
-            for value in rows
-        )
-    else:
-        grid_rows = " ".join(
-            ["minmax(0, 1fr)"] * rows
-        )
+    grid_columns = build_tracks(layout["columns"])
+    grid_rows = build_tracks(layout["rows"])
 
     grid_areas = " ".join(
         f'"{" ".join(row)}"'
-        for row in areas
+        for row in layout["areas"]
     )
 
     return grid_columns, grid_rows, grid_areas

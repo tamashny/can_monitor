@@ -1,54 +1,86 @@
+# Dashboard layout
+#
+# layout.columns / layout.rows:
+#   number — share of the free space (fr), string — CSS size as is ("auto", "48px")
+#
+# cells.<area>:
+#   widget — what is drawn inside (see CELL_RENDERERS in app/frontend/cells.py)
+#   title  — label in the top border of the box
+#   color  — border colour, a name from BOX_COLORS in app/frontend/colors.py
+#   number — optional, superscript number before the title (default: order in this list)
+
 layout:
 
   columns:
-    - 3
+    - 2
+    - 2.6
     - 2
     - 2
     - 2
 
-  rows: 9
+  rows:
+    - auto
+    - auto
+    - auto
+    - 1
 
   areas:
 
-    - [A, D, E, F]
-    - [B, D, E, F]
-    - [B, D, E, F]
-    - [C, G, G, G]
-    - [C, H, H, H]
-    - [C, I, I, I]
-    - [C, I, I, I]
-    - [C, I, I, I]
-    - [J, I, I, I]
+    - [A, C, D, E, F]
+    - [B, C, D, E, F]
+    - [G, G, H, H, H]
+    - [J, J, I, I, I]
 
 
 cells:
 
   A:
-    title: "CAN status"
+    widget: can_status
+    title: "can"
+    color: net
 
   B:
-    title: "EC status"
+    widget: ec_status
+    title: "ec"
+    color: cpu
 
   C:
-    title: "Systems states"
+    widget: systems_states
+    title: "systems"
+    color: proc
 
   D:
-    title: "SoC"
+    widget: soc
+    title: "storage"
+    color: mem
 
   E:
-    title: "V I T"
+    widget: v_i_t
+    title: "vit"
+    color: mem
 
   F:
-    title: "Converter"
+    widget: converter
+    title: "converter"
+    color: net
 
   G:
-    title: "Contactors"
+    widget: contactors
+    title: "contactors"
+    color: cpu
 
   H:
-    title: "Coolling system"
+    widget: cooling
+    title: "cooling"
+    color: cpu
 
   I:
-    title: "Cells map"
+    widget: cells_map
+    title: "cells"
+    color: proc
 
   J:
-    title: "Command line"
+    widget: event_log
+    title: "log"
+    color: gray
+    number: 0

@@ -1,11 +1,19 @@
 import math
+from datetime import datetime
+from types import SimpleNamespace
 
 from nicegui import ui
 
 from .colors import (
+    BOX_COLORS,
+    DIM,
+    METER_BG,
     NO_DATA_COLOR,
+    RED,
+    YELLOW,
     cell_voltage_color,
     current_color,
+    meter_color,
     soc_color,
     soh_color,
     state_color,
@@ -18,6 +26,9 @@ from .config import (
     CELL_VOLTAGE_COLUMNS,
     CURRENT_MAX,
     CURRENT_MIN,
+    EVENT_LOG_SIZE,
+    METER_SEGMENTS,
+    NO_DATA,
     SOC_MAX,
     SOC_MIN,
     SOH_MAX,
@@ -27,389 +38,631 @@ from .config import (
     VOLTAGE_MAX,
     VOLTAGE_MIN,
 )
-from .helpers import cells_summary, get_segments, is_number, link_value
-from .parameters import SYSTEMS
+from .events import EVENTS, log_command
+from .helpers import (
+    cells_summary,
+    fmt,
+    get_segments,
+    is_number,
+    link_value,
+    pretty,
+    segment_value,
+    spans_html,
+)
+from .parameters import BUP_ERRORS, DEVICES
 
-NO_BORDER_TITLES = ("Command line", "CAN status")
-
-
-def cell_style(name, cell):
-
-    is_command_line = cell["title"] == "Command line"
-
-    cell_border = 'none' if cell["title"] in NO_BORDER_TITLES else '1px solid var(--border-color)'
-    cell_flex = 'display: flex; align-items: center; justify-content: center;' if is_command_line else ''
-
-    return f'''
-    grid-area: {name};
-
-    position: relative;
-    overflow: visible;
-
-    min-width: 0;
-    min-height: 0;
-
-    border: {cell_border};
-    border-radius: 10px;
-    padding: 15px;
-
-    {cell_flex}
-
-    box-sizing: border-box;
-    '''
+SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
 
 
-def render_segmented_row(label, value_text, color, segments, label_width='40px'):
+# =================================================
+# BOX FRAME
+# =================================================
 
-    with ui.element('div').classes(
-        'flex items-center w-full'
+def superscript(number):
+
+    return ''.join(SUPERSCRIPTS[int(digit)] for digit in str(number))
+
+
+def tab_html(*parts):
+    """
+    Border label ┐...┌ built from (text, css class[, colour]) parts.
+    """
+
+    return f'<span class="tick">┐</span>{spans_html(parts)}<span class="tick">┌</span>'
+
+
+def border_tab(*parts):
+
+    return ui.html(
+        tab_html(*parts),
+        sanitize=False,
+    ).classes('box-tab')
+
+
+def render_box(area, cell, number, parameters, updates, debug=False):
+    """
+    Draw one dashboard box. The widget adds its update functions to
+    `updates`; the page calls them on a timer to show fresh values.
+    """
+
+    color = BOX_COLORS.get(cell.get("color"), BOX_COLORS["gray"])
+
+    with ui.element('div').classes('box').style(
+        f'grid-area: {area}; --box: {color};'
     ):
 
-        ui.label(label).style(
-            f'width: {label_width};'
-        )
+        with ui.element('div').classes('box-bar'):
+            left = ui.element('div').classes('box-bar-side')
+            right = ui.element('div').classes('box-bar-side')
 
-        for i in range(7):
-
-            background = color if i < segments else 'var(--segment-off-color)'
-
-            ui.element('div').style(
-                f'''
-                width: 12px;
-                height: 12px;
-                margin-right: 5px;
-                background: {background};
-                '''
+        with left:
+            border_tab(
+                (superscript(number), 'num'),
+                (cell["title"], 'title'),
             )
 
-        ui.label(
-            value_text
-        ).classes('ml-auto')
+        box = SimpleNamespace(left=left, right=right, updates=updates, debug=debug)
+
+        widget = cell.get("widget")
+        renderer = CELL_RENDERERS.get(widget)
+
+        if renderer is None:
+            ui.label(f'unknown widget: {widget}').classes('dim')
+            return
+
+        renderer(parameters, box)
 
 
-def render_can_status(parameters):
+def live(box, update):
+    """
+    Show the current values now and keep them fresh.
+    """
 
-    with ui.row().classes('w-full items-center justify-between'):
-
-        ui.label('CAN-BUS: VCAN,    500 kbit/s')
-
-        theme_toggle = ui.button(
-            icon='dark_mode',
-        ).props('flat dense round')
-
-    is_light_theme = False
-
-    def toggle_theme():
-        nonlocal is_light_theme
-        is_light_theme = not is_light_theme
-
-        if is_light_theme:
-            ui.query('body').classes(add='theme-light')
-            theme_toggle.set_icon('light_mode')
-        else:
-            ui.query('body').classes(remove='theme-light')
-            theme_toggle.set_icon('dark_mode')
-
-    theme_toggle.on_click(toggle_theme)
+    update()
+    box.updates.append(update)
 
 
-def render_ec_status(parameters):
+# =================================================
+# BUILDING BLOCKS
+# =================================================
 
-    # EC status
-    with ui.element('div').classes('flex items-center'):
-        state = parameters["ec_state"]
+class Value:
+    """
+    Value label that is redrawn only when its text or colour changes.
+    """
 
-        with ui.element('div').style(
-            f'''
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-            background: {state_color(state)};
-            margin-right: 6px;
-            '''
-        ):
-            pass
+    def __init__(self, label):
 
-        ui.label(f'EC status: {state}')
+        self.label = label
+        self.shown = None
 
-    # Warnings / Errors
-    with ui.element('div').classes('flex items-center'):
-        ui.label(
-            f'Warnings: {parameters["ec_warnings"]}'
-        ).style('margin-right: 20px;')
+    def set(self, text, color=None):
 
-        ui.label(
-            f'Errors: {parameters["ec_errors"]}'
+        if (text, color) == self.shown:
+            return
+
+        self.shown = (text, color)
+
+        self.label.set_text(text)
+        self.label.style(f'color: {color or "var(--title)"};')
+
+
+class Meter:
+    """
+    Row of blocks. Every lit block takes the colour of the value it stands
+    for and gets darker / brighter along the scale, like btop meters.
+    """
+
+    def __init__(self):
+
+        with ui.element('div').classes('meter'):
+            self.segments = [
+                ui.element('div').classes('meter-seg')
+                for _ in range(METER_SEGMENTS)
+            ]
+
+        self.colors = [None] * METER_SEGMENTS
+
+    def set(self, value, minimum, maximum, color, minimum_segments=0):
+
+        lit = get_segments(
+            value, minimum, maximum, METER_SEGMENTS, minimum_segments
         )
 
-    # Full cycles
-    ui.label(
-        f'Full cycles: {parameters["ec_cycles"]}'
-    )
+        for i, segment in enumerate(self.segments):
 
-
-def render_converter(parameters):
-
-    ui.label(
-        f'Converter mode: {parameters["converter_mode"].capitalize()}'
-    )
-
-    ui.label(
-        f'U1 {parameters["converter_v1"]}V < {parameters["converter_v2"]}V U2'
-    )
-
-    ui.label(
-        f'I1 {parameters["converter_i1"]}A -> {parameters["converter_i2"]}A I2'
-    )
-
-    ui.label(
-        f'Contactor {parameters["converter_contactor"]}'
-    )
-
-
-def render_systems_states(parameters):
-
-    with ui.element('div').style(
-        '''
-        display: grid;
-        grid-template-columns: 2fr 3fr 2fr 2fr;
-        width: 100%;
-        '''
-    ):
-
-        ui.label('State')
-        ui.label('System')
-        ui.label('Errors')
-        ui.label('Link')
-
-        for name, state_key, errors_key, link_key, link_max in SYSTEMS:
-
-            state = parameters[state_key]
-
-            with ui.element('div').classes('flex items-center'):
-
-                with ui.element('div').style(
-                    f'''
-                    width: 12px;
-                    height: 12px;
-                    border-radius: 50%;
-                    background: {state_color(state)};
-                    margin-right: 5px;
-                    '''
-                ):
-                    pass
-
-                ui.label(state)
-
-            ui.label(name)
-
-            errors = parameters[errors_key]
-
-            ui.label(
-                'None' if errors == 0 else str(errors)
-            )
-
-            ui.label(
-                link_value(
-                    parameters[link_key],
-                    link_max
+            if i < lit:
+                background = meter_color(
+                    color(segment_value(i, minimum, maximum, METER_SEGMENTS)),
+                    i / (METER_SEGMENTS - 1),
                 )
-            )
+            else:
+                background = METER_BG
+
+            if background != self.colors[i]:
+                self.colors[i] = background
+                segment.style(f'background: {background};')
 
 
-def render_soc(parameters):
+def text(value):
+    """
+    Text value for display: lower case, a dash when there is no data.
+    """
 
-    # SoC
-    soc = parameters["soc"]
+    if value == NO_DATA:
+        return '—'
 
-    render_segmented_row(
-        'SoC',
-        f'{soc:.0f}%',
-        soc_color(soc),
-        get_segments(soc, SOC_MIN, SOC_MAX, minimum_segments=1),
+    return str(value).lower()
+
+
+def count(value, color):
+    """
+    Counter text and colour: the colour only when it is above zero.
+    """
+
+    return fmt(value), color if is_number(value) and value > 0 else None
+
+
+def render_kv(key):
+
+    with ui.element('div').classes('kv'):
+
+        ui.label(key).classes('k')
+
+        return Value(ui.label().classes('v'))
+
+
+def render_pairs(keys):
+    """
+    One line of "key value" pairs spread across the width.
+    """
+
+    values = []
+
+    with ui.element('div').classes('kv'):
+
+        for key in keys:
+
+            with ui.element('div'):
+                ui.label(key).classes('k inline')
+                ui.label(' ').classes('inline whitespace-pre')
+                values.append(Value(ui.label().classes('v inline')))
+
+    return values
+
+
+def render_metric(label, unit, minimum, maximum, color, minimum_segments=0):
+    """
+    "Label  value" line with a meter under it. Returns a setter.
+    """
+
+    value_label = render_kv(label)
+    meter = Meter()
+
+    def set_value(value):
+
+        value_label.set(
+            fmt(value, unit, '.0f'),
+            color(value) if is_number(value) else DIM,
+        )
+
+        meter.set(value, minimum, maximum, color, minimum_segments)
+
+    return set_value
+
+
+# =================================================
+# WIDGETS
+# =================================================
+
+def render_can_status(parameters, box):
+
+    render_kv('Bus').set('VCAN')
+    render_kv('Bitrate').set('500 kbit/s')
+
+    with box.right:
+
+        # Values are imitated by the simulator (--debug)
+        if box.debug:
+            border_tab(('simulation', 'title', YELLOW))
+
+        clock = border_tab()
+
+    shown = None
+
+    def update():
+
+        nonlocal shown
+
+        now = datetime.now().strftime('%H:%M:%S')
+
+        if now != shown:
+            shown = now
+            clock.set_content(tab_html((now, 'title')))
+
+    live(box, update)
+
+
+def render_ec_status(parameters, box):
+
+    bune = parameters["bune"]
+
+    state = render_kv('State')
+    warnings = render_kv('Warnings')
+    errors = render_kv('Errors')
+    cycles = render_kv('Full cycles')
+
+    def update():
+
+        state.set(f'● {bune["state"]}', state_color(bune["state"]))
+        warnings.set(*count(bune["warnings"], YELLOW))
+        errors.set(*count(bune["errors"], RED))
+        cycles.set(fmt(bune["cycles"]))
+
+    live(box, update)
+
+
+def render_converter(parameters, box):
+
+    bup = parameters["bup"]
+    bune = parameters["bune"]
+
+    mode = render_kv('Mode')
+
+    # U1 0V < 0V U2
+    # I1 0A -> 0A I2
+    flow = {}
+
+    with ui.element('div').classes('table').style(
+        'grid-template-columns: auto 1fr auto 1fr auto;'
+    ):
+
+        for left_key, left, sign, right, right_key in (
+            ('U1', "dc_input_voltage", '<', "dc_output_voltage", 'U2'),
+            ('I1', "dc_input_current", '->', "dc_output_current", 'I2'),
+        ):
+
+            ui.label(left_key).classes('k')
+            flow[left] = Value(ui.label().classes('v text-right'))
+            ui.label(sign).classes('dim text-center')
+            flow[right] = Value(ui.label().classes('v'))
+            ui.label(right_key).classes('k')
+
+    errors = render_kv('Errors')
+    contactor = render_kv('Contactor')
+
+    def update():
+
+        mode.set(pretty(bup["dc_status"]))
+
+        for key, value in flow.items():
+            value.set(fmt(bup[key], 'A' if 'current' in key else 'V'))
+
+        # Active error flags of 0x198
+        active = [name for key, name in BUP_ERRORS.items() if bup[key] == "ALARM"]
+
+        if all(bup[key] == NO_DATA for key in BUP_ERRORS):
+            errors.set('—')
+        elif active:
+            errors.set(', '.join(active), RED)
+        else:
+            errors.set('None')
+
+        contactor.set(text(bune["converter_contactor"]))
+
+    live(box, update)
+
+
+def render_systems_states(parameters, box):
+
+    rows = []
+
+    # Header stays on top, the device list scrolls under it
+    with ui.element('div').classes('scroll-area'):
+
+        with ui.element('div').classes('scroll'):
+
+            # Device names give way first when the box is narrow
+            with ui.element('div').classes('table sticky-head').style(
+                'grid-template-columns: auto minmax(0, 1fr) auto auto auto;'
+                'column-gap: 1.5ch;'
+            ):
+
+                for header in ('State', 'Device', 'ID', 'Errors', 'Link'):
+                    ui.label(header).classes('th')
+
+                for key, name, can_id, link_max in DEVICES:
+
+                    state = Value(ui.label())
+                    ui.label(name).classes('k truncate')
+                    ui.label(can_id).classes('dim')
+                    errors = Value(ui.label().classes('v'))
+                    link = Value(ui.label().classes('v text-right'))
+
+                    rows.append((parameters[key], link_max, state, errors, link))
+
+    def update():
+
+        for device, link_max, state, errors, link in rows:
+
+            state.set(f'● {device["state"]}', state_color(device["state"]))
+
+            if device["errors"] == 0:
+                errors.set('None')
+            else:
+                errors.set(*count(device["errors"], RED))
+
+            # "None" means the link timed out or there is no data yet
+            link_text = link_value(device["link"], link_max)
+            link.set(link_text, RED if link_text == "None" else None)
+
+    live(box, update)
+
+
+def render_soc(parameters, box):
+
+    bune = parameters["bune"]
+
+    soc = render_metric('SoC', '%', SOC_MIN, SOC_MAX, soc_color, minimum_segments=1)
+    soh = render_metric('SoH', '%', SOH_MIN, SOH_MAX, soh_color, minimum_segments=1)
+
+    energy = render_kv('Storage energy')
+    energy_max = render_kv('Max storage energy')
+
+    def update():
+
+        soc(bune["soc"])
+        soh(bune["soh"])
+
+        energy.set(fmt(bune["storage_energy"], ' kWh'))
+        energy_max.set(fmt(bune["storage_energy_max"], ' kWh'))
+
+    live(box, update)
+
+
+def render_v_i_t(parameters, box):
+
+    bune = parameters["bune"]
+
+    voltage = render_metric(
+        'Voltage', 'V', VOLTAGE_MIN, VOLTAGE_MAX, voltage_color, minimum_segments=1,
+    )
+    current = render_metric(
+        'Current', 'A', CURRENT_MIN, CURRENT_MAX, current_color,
+    )
+    temperature = render_metric(
+        'Temperature', 'C', TEMPERATURE_MIN, TEMPERATURE_MAX, temperature_color, minimum_segments=1,
     )
 
-    # SoH
-    soh = parameters["soh"]
+    def update():
 
-    render_segmented_row(
-        'SoH',
-        f'{soh:.0f}%',
-        soh_color(soh),
-        get_segments(soh, SOH_MIN, SOH_MAX, minimum_segments=1),
+        voltage(bune["voltage"])
+        current(bune["current"])
+        temperature(bune["temperature"])
+
+    live(box, update)
+
+
+def render_contactors(parameters, box):
+
+    bune = parameters["bune"]
+
+    contactor1, contactor2 = render_pairs(['Contactor 1', 'Contactor 2'])
+
+    def update():
+
+        contactor1.set(text(bune["contactor1"]))
+        contactor2.set(text(bune["contactor2"]))
+
+    live(box, update)
+
+
+def render_cooling(parameters, box):
+
+    so = parameters["so"]
+
+    *fans, shutters = render_pairs(
+        [f'F{i}' for i in range(1, 7)] + ['Shutters']
     )
 
-    # Storage energy
-    ui.label(
-        f'Storage energy: {parameters["storage_energy"]} kWh'
-    )
+    def update():
 
-    ui.label(
-        f'Max storage energy: {parameters["storage_energy_max"]} kWh'
-    )
+        for i, fan in enumerate(fans, start=1):
+            fan.set(fmt(so[f"fan{i}_rpm"], 'rpm'))
 
+        shutters.set(text(so["shutters"]))
 
-def render_v_i_t(parameters):
-
-    # Voltage
-    voltage = parameters["voltage1"]
-
-    render_segmented_row(
-        'U',
-        f'{voltage:.0f}V',
-        voltage_color(voltage),
-        get_segments(voltage, VOLTAGE_MIN, VOLTAGE_MAX, minimum_segments=1),
-        label_width='25px',
-    )
-
-    # Current
-    current = parameters["current1"]
-
-    render_segmented_row(
-        'I',
-        f'{current:.0f}A',
-        current_color(current),
-        get_segments(current, CURRENT_MIN, CURRENT_MAX),
-        label_width='25px',
-    )
-
-    # Temperature
-    temperature = parameters["temperature1"]
-
-    render_segmented_row(
-        'T',
-        f'{temperature:.0f}C',
-        temperature_color(temperature),
-        get_segments(temperature, TEMPERATURE_MIN, TEMPERATURE_MAX, minimum_segments=1),
-        label_width='25px',
-    )
+    live(box, update)
 
 
-def render_contactors(parameters):
-
-    ui.label(
-        f'Contactor 1: {parameters["contactor1"].lower()} | '
-        f'Contactor 2: {parameters["contactor2"].lower()}'
-    )
-
-
-def render_cooling(parameters):
-
-    fan_parts = [
-        f'F{i}:{parameters[f"fan{i}_rpm"]}rpm'
-        for i in range(1, 7)
-    ]
-
-    fan_parts.append(
-        f'Sh:{parameters["shutters"]}'
-    )
-
-    ui.label(
-        ' | '.join(fan_parts)
-    )
-
-
-# mode: (parameters key, columns, unit, color function)
+# mode: (border label, parameters key, columns, unit, color function)
 CELLS_MAP_MODES = {
-    "voltage": ("cell_voltages", CELL_VOLTAGE_COLUMNS, "V", cell_voltage_color),
-    "temperature": ("cell_temperatures", CELL_TEMPERATURE_COLUMNS, "C", temperature_color),
+    "voltage": ("voltage", "cell_voltages", CELL_VOLTAGE_COLUMNS, "V", cell_voltage_color),
+    "temperature": ("temperature", "cell_temperatures", CELL_TEMPERATURE_COLUMNS, "C", temperature_color),
 }
 
 
 def cells_map_summary(mode, values):
+    """
+    Border labels with the key figures: [(text, css, colour), ...] per label.
+    """
 
-    unit = CELLS_MAP_MODES[mode][2]
+    _, _, _, unit, color = CELLS_MAP_MODES[mode]
 
     maximum, minimum, no_data = cells_summary(values)
 
     if maximum is None:
-        parts = ['Max: —', 'Min: —']
+        labels = [
+            [('max ', 'k'), ('—', 'v')],
+            [('min ', 'k'), ('—', 'v')],
+        ]
     else:
-        parts = [f'Max: {maximum:g}{unit}', f'Min: {minimum:g}{unit}']
+        labels = [
+            [('max ', 'k'), (f'{maximum:g}{unit}', 'v', color(maximum))],
+            [('min ', 'k'), (f'{minimum:g}{unit}', 'v', color(minimum))],
+        ]
 
     if mode == "voltage":
         imbalance = '—' if maximum is None else f'{maximum - minimum:g}{unit}'
-        parts.append(f'Imbalance: {imbalance}')
+        labels.append([('imbalance ', 'k'), (imbalance, 'v')])
 
-    parts.append(f'No data: {no_data}')
+    labels.append([('no data ', 'k'), (no_data, 'v')])
 
-    return ' | '.join(parts)
-
-
-def render_cells_map(parameters):
-
-    @ui.refreshable
-    def cells_map_content(mode):
-
-        key, columns, unit, color = CELLS_MAP_MODES[mode]
-        values = parameters[key]
-        rows = math.ceil(len(values) / columns)
-
-        summary_label.set_text(
-            cells_map_summary(mode, values)
-        )
-
-        with ui.element('div').classes('cells-map-grid').style(
-            f'--cols: {columns}; --rows: {rows};'
-        ):
-
-            for number, value in enumerate(values, start=1):
-
-                if is_number(value):
-                    background = color(value)
-                    tooltip = f'Cell {number}: {value:g}{unit}'
-                else:
-                    background = NO_DATA_COLOR
-                    tooltip = f'Cell {number}: No data'
-
-                ui.element('div').classes('cells-map-cell').style(
-                    f'background: {background};'
-                ).tooltip(tooltip)
-
-    with ui.element('div').classes('cells-map'):
-
-        with ui.element('div').classes('cells-map-header'):
-
-            ui.toggle(
-                {"voltage": "Voltage", "temperature": "Temperature"},
-                value="voltage",
-                on_change=lambda e: cells_map_content.refresh(e.value),
-            ).props('flat dense no-caps').classes('cells-map-toggle')
-
-            summary_label = ui.label().classes('ml-auto')
-
-        cells_map_content("voltage")
+    return labels
 
 
-def render_default(cell):
-    ui.label(cell["title"])
+def render_cells_map(parameters, box):
+
+    cc = parameters["cc"]
+
+    tabs = {}
+
+    with box.left:
+
+        for mode, (label, *_) in CELLS_MAP_MODES.items():
+
+            tabs[mode] = border_tab(
+                (label, 'title'),
+            ).classes('clickable').on(
+                'click', lambda e, mode=mode: show(mode)
+            )
+
+    with box.right:
+        summary = ui.element('div').classes('box-bar-side')
+
+    grid = ui.element('div').classes('cells-map-grid')
+
+    # What is on screen now
+    view = SimpleNamespace(mode=None, tiles=[], summary=None)
+
+    def show(mode):
+        """
+        Build the tiles of a mode; their colours come from update().
+        """
+
+        _, key, columns, _, _ = CELLS_MAP_MODES[mode]
+        rows = math.ceil(len(cc[key]) / columns)
+
+        for tab_mode, tab in tabs.items():
+
+            if tab_mode == mode:
+                tab.classes(add='active')
+            else:
+                tab.classes(remove='active')
+
+        grid.style(f'--cols: {columns}; --rows: {rows};')
+        grid.clear()
+
+        view.tiles = []
+
+        with grid:
+
+            for number in range(1, len(cc[key]) + 1):
+
+                with ui.label(str(number)).classes('cells-map-cell') as tile:
+                    tooltip = ui.tooltip()
+
+                # tile, tooltip, what they show now
+                view.tiles.append([tile, tooltip, None])
+
+        view.mode = mode
+        view.summary = None
+
+        update()
+
+    def update():
+
+        _, key, _, unit, color = CELLS_MAP_MODES[view.mode]
+        values = cc[key]
+
+        for number, (entry, value) in enumerate(zip(view.tiles, values), start=1):
+
+            if is_number(value):
+                shown = (color(value), 'lit', f'Cell {number}: {value:g}{unit}')
+            else:
+                shown = (NO_DATA_COLOR, 'off', f'Cell {number}: No data')
+
+            if shown == entry[2]:
+                continue
+
+            tile, tooltip, _ = entry
+            background, lit, tooltip_text = shown
+
+            tile.style(f'background: {background};')
+            tile.classes(add=lit, remove='off' if lit == 'lit' else 'lit')
+            tooltip.set_text(tooltip_text)
+
+            entry[2] = shown
+
+        labels = cells_map_summary(view.mode, values)
+
+        if labels != view.summary:
+
+            view.summary = labels
+            summary.clear()
+
+            with summary:
+                for parts in labels:
+                    border_tab(*parts)
+
+    show("voltage")
+
+    box.updates.append(update)
+
+
+def event_html(event):
+
+    return spans_html(
+        [
+            (event.time, 'dim'),
+            (f'  {event.source:<11}', 'k'),
+        ]
+        + event.parts
+    )
+
+
+def render_event_log(parameters, box):
+
+    # Newest entry at the bottom, next to the command line:
+    # the list is column-reverse, so new rows are inserted first
+    with ui.element('div').classes('scroll-area'):
+        lines = ui.element('div').classes('log-lines')
+
+    with ui.element('div').classes('log-input'):
+        build_command_line(on_command=log_command)
+
+    shown = 0
+
+    def update():
+
+        nonlocal shown
+
+        for event in [event for event in EVENTS if event.seq > shown]:
+
+            with lines:
+                row = ui.html(event_html(event), sanitize=False).classes('log-line')
+
+            row.move(lines, target_index=0)
+
+            shown = event.seq
+
+        rows = lines.default_slot.children
+
+        while len(rows) > EVENT_LOG_SIZE:
+            lines.remove(rows[-1])
+
+    live(box, update)
 
 
 CELL_RENDERERS = {
-    "CAN status": render_can_status,
-    "EC status": render_ec_status,
-    "Converter": render_converter,
-    "Systems states": render_systems_states,
-    "SoC": render_soc,
-    "V I T": render_v_i_t,
-    "Contactors": render_contactors,
-    "Coolling system": render_cooling,
-    "Cells map": render_cells_map,
+    "can_status": render_can_status,
+    "ec_status": render_ec_status,
+    "converter": render_converter,
+    "systems_states": render_systems_states,
+    "soc": render_soc,
+    "v_i_t": render_v_i_t,
+    "contactors": render_contactors,
+    "cooling": render_cooling,
+    "cells_map": render_cells_map,
+    "event_log": render_event_log,
 }
-
-
-def render_cell(cell, parameters):
-
-    title = cell["title"]
-
-    if title == "Command line":
-        build_command_line()
-        return
-
-    renderer = CELL_RENDERERS.get(title)
-
-    if renderer is None:
-        render_default(cell)
-        return
-
-    renderer(parameters)

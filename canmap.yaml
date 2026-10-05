@@ -257,10 +257,10 @@ map:
             parameters:
 
               - bit: 0
-                parameter: dc_status
+                parameter: dc_error_none
                 values:
-                  0: OK
-                  1: ALARM
+                  0: "NO"
+                  1: "YES"
 
               - bit: 1
                 parameter: dc_overvoltage
@@ -276,6 +276,12 @@ map:
 
               - bit: 3
                 parameter: dc_overcurrent
+                values:
+                  0: OK
+                  1: ALARM
+
+              - bit: 4
+                parameter: dc_igbt_driver_error
                 values:
                   0: OK
                   1: ALARM

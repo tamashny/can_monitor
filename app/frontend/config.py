@@ -1,4 +1,11 @@
 # =================================================
+# MARKERS
+# =================================================
+
+# Value is not available (same marker as protocol.NO_DATA)
+NO_DATA = "No data"
+
+# =================================================
 # LINK TIMEOUTS
 # =================================================
 
@@ -6,6 +13,7 @@ CONVERTER_LINK_MAX = 50
 CAPACITORS_LINK_MAX = 50
 ISOLATION_LINK_MAX = 100
 COOLING_LINK_MAX = 100
+BYPASS_LINK_MAX = 100
 
 # =================================================
 # SOC
@@ -62,16 +70,40 @@ TEMPERATURE_WHITE_MAX = 40
 TEMPERATURE_YELLOW_MAX = 60
 
 # =================================================
+# METERS
+# =================================================
+
+# Number of blocks in a meter bar
+METER_SEGMENTS = 15
+
+# =================================================
 # CELLS MAP
 # =================================================
 
 CELL_VOLTAGE_COUNT = 70
 CELL_TEMPERATURE_COUNT = 105
 
-CELL_VOLTAGE_COLUMNS = 14
-CELL_TEMPERATURE_COLUMNS = 21
+CELL_VOLTAGE_COLUMNS = 10
+CELL_TEMPERATURE_COLUMNS = 15
 
 # Placeholder thresholds, set real values
 CELL_VOLTAGE_RED_LOW = 8
 CELL_VOLTAGE_YELLOW = 10
 CELL_VOLTAGE_GREEN_MAX = 14
+
+# =================================================
+# EVENT LOG
+# =================================================
+
+# Entries kept in memory and shown in the log
+EVENT_LOG_SIZE = 500
+
+# How often the parameters are checked for changes, s
+EVENT_WATCH_INTERVAL = 0.5
+
+# =================================================
+# DASHBOARD
+# =================================================
+
+# How often the boxes redraw changed values, s
+DASHBOARD_REFRESH_INTERVAL = 0.5

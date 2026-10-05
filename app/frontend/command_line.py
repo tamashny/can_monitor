@@ -12,7 +12,11 @@ COMMANDS = [
 ]
 
 
-def build_command_line():
+def build_command_line(on_command=None):
+    """
+    Command input with a pop-up list of commands.
+    Enter passes the typed text to on_command(text).
+    """
 
     # =================================================
     # CLICK-OUTSIDE OVERLAY
@@ -33,66 +37,23 @@ def build_command_line():
     # COMMAND LINE CONTAINER
     # =================================================
 
-    with ui.element('div').style(
-        '''
-        position: relative;
-        width: calc(100% - 20px);
-
-        z-index: 1000;
-        '''
-    ):
+    with ui.element('div').classes('command-line'):
 
         # =================================================
-        # COMMAND LIST
+        # COMMAND LIST (pops up above the input)
         # =================================================
 
-        with ui.element('div').style(
-            '''
-            position: absolute;
+        with ui.element('div').classes('command-popup') as command_popup:
 
-            left: 0;
-            right: 0;
-
-            bottom: 100%;
-
-            width: 100%;
-
-            height: 144px;
-
-            display: none;
-
-            background: #1C1C1C;
-
-            border: none;
-            border-radius: 10px 10px 0 0;
-
-            box-sizing: border-box;
-            overflow: hidden;
-
-            z-index: 1000;
-            '''
-        ) as command_list:
-
-            with ui.element('div').classes(
-                'command-list'
-            ).style(
-                '''
-                width: 100%;
-                height: 100%;
-
-                overflow-y: auto;
-                overflow-x: hidden;
-                '''
-            ):
+            with ui.element('div').classes('command-list'):
 
                 for command in COMMANDS:
 
                     ui.button(
-                        command
+                        command,
+                        color=None,
                     ).props(
-                        'flat dense'
-                    ).classes(
-                        'w-full justify-start'
+                        'flat dense no-caps'
                     ).on(
                         'click',
                         lambda e, command=command:
@@ -103,12 +64,14 @@ def build_command_line():
         # COMMAND INPUT
         # =================================================
 
+        ui.label('>').classes('command-prompt')
+
         command_input = ui.input(
-            placeholder='/Command line...'
+            placeholder='/command line...'
         ).props(
             'borderless dense'
         ).classes(
-            'w-full command-input'
+            'command-input'
         )
 
         # =================================================
@@ -116,48 +79,39 @@ def build_command_line():
         # =================================================
 
         def open_commands():
-            command_list.style(
-                '''
-                display: block;
-                '''
-            )
-
-            command_input.classes(
-                add='command-input-open'
-            )
-
-            click_outside_overlay.style(
-                '''
-                display: block;
-                '''
-            )
+            command_popup.style('display: block;')
+            click_outside_overlay.style('display: block;')
 
         # =================================================
         # CLOSE COMMAND LIST
         # =================================================
 
         def close_commands():
-            command_list.style(
-                '''
-                display: none;
-                '''
-            )
-
-            command_input.classes(
-                remove='command-input-open'
-            )
-
-            click_outside_overlay.style(
-                '''
-                display: none;
-                '''
-            )
+            command_popup.style('display: none;')
+            click_outside_overlay.style('display: none;')
 
             command_input.set_value('')
 
             command_input.run_method(
                 'blur'
             )
+
+        # =================================================
+        # ENTER — SEND COMMAND
+        # =================================================
+
+        def submit():
+            command = (command_input.value or '').strip()
+
+            if command and on_command:
+                on_command(command)
+
+            close_commands()
+
+        command_input.on(
+            'keydown.enter',
+            lambda e: submit()
+        )
 
         # =================================================
         # OPEN ON FOCUS
