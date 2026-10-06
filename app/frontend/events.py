@@ -14,10 +14,11 @@ from datetime import datetime
 
 from nicegui import app
 
+from parameters import DEVICES
+from settings import EVENT_LOG_SIZE, EVENT_WATCH_INTERVAL
+
 from .colors import DIM, HI, event_color
-from .config import EVENT_LOG_SIZE, EVENT_WATCH_INTERVAL
 from .helpers import fmt, is_number
-from .parameters import DEVICES
 
 
 @dataclass

@@ -4,8 +4,8 @@ Source: can_map.xlsx, bus 1 ("Адрессация / Содержание шин
 Device keys and parameter names match canmap.yaml, so the output of
 protocol.decode() goes into PARAMETERS[device] as is.
 
-Every value starts as NO_DATA and is overwritten at runtime by the program
-that feeds this dashboard (CAN reader, simulator, ...).
+Every value starts as NO_DATA and is overwritten at runtime by the CAN
+reader (canbus/reader.py) or, with --debug, by the simulator.
 
 Every device except БУНЭ also has a summary for the "systems" table:
     state  — NONE / OK / WARNING / ALARM
@@ -13,16 +13,15 @@ Every device except БУНЭ also has a summary for the "systems" table:
     link   — time since the last frame from the device, ms
 """
 
-from .config import (
-    BYPASS_LINK_MAX,
-    CAPACITORS_LINK_MAX,
+from settings import (
     CELL_TEMPERATURE_COUNT,
     CELL_VOLTAGE_COUNT,
-    CONVERTER_LINK_MAX,
-    COOLING_LINK_MAX,
-    ISOLATION_LINK_MAX,
-    NO_DATA,
+    LINK_TIMEOUTS,
 )
+
+# Value is not available. protocol.decode() returns it for fields with all
+# bits set (0xFF...), and every parameter starts with it.
+NO_DATA = "No data"
 
 
 def device_summary():
@@ -183,15 +182,27 @@ PARAMETERS = {
         "contactor2": NO_DATA,
         "converter_contactor": NO_DATA,
     },
+
+    # =================================================
+    # Source of the data: CAN adapter or simulator
+    # =================================================
+
+    "bus": {
+        "source": NO_DATA,                  # e.g. "slcan COM3" or "simulation"
+        "bitrate": NO_DATA,                 # bit/s
+        "state": "NONE",                    # NONE / CONNECTED / DISCONNECTED / SIMULATION
+        "frames_per_second": NO_DATA,       # frames received in the last second
+        "error": NO_DATA,                   # why the port could not be opened
+    },
 }
 
 # Devices of the "systems" table: (key in PARAMETERS, name, CAN ID, link timeout, ms)
 DEVICES = [
-    ("imd", "isolation", "0x16", ISOLATION_LINK_MAX),
-    ("cc", "capacitors", "0x17", CAPACITORS_LINK_MAX),
-    ("bup", "converter", "0x18", CONVERTER_LINK_MAX),
-    ("pusk", "bypass", "0x19", BYPASS_LINK_MAX),
-    ("so", "cooling", "0x1A", COOLING_LINK_MAX),
+    ("imd", "isolation", "0x16", LINK_TIMEOUTS["imd"]),
+    ("cc", "capacitors", "0x17", LINK_TIMEOUTS["cc"]),
+    ("bup", "converter", "0x18", LINK_TIMEOUTS["bup"]),
+    ("pusk", "bypass", "0x19", LINK_TIMEOUTS["pusk"]),
+    ("so", "cooling", "0x1A", LINK_TIMEOUTS["so"]),
 ]
 
 # Names of the BUP error flags (0x198, byte 1), shown in the converter box

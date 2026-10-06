@@ -1,4 +1,4 @@
-from .config import (
+from settings import (
     CELL_VOLTAGE_GREEN_MAX,
     CELL_VOLTAGE_RED_LOW,
     CELL_VOLTAGE_YELLOW,

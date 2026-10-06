@@ -1,3 +1,4 @@
 nicegui
 python-can
+pyserial
 PyYAML

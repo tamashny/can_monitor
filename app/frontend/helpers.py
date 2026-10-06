@@ -1,6 +1,6 @@
 import html
 
-from .config import NO_DATA
+from parameters import NO_DATA
 
 
 def is_number(value):

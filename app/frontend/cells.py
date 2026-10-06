@@ -4,9 +4,28 @@ from types import SimpleNamespace
 
 from nicegui import ui
 
+from parameters import BUP_ERRORS, DEVICES, NO_DATA
+from settings import (
+    CELL_TEMPERATURE_COLUMNS,
+    CELL_VOLTAGE_COLUMNS,
+    CURRENT_MAX,
+    CURRENT_MIN,
+    EVENT_LOG_SIZE,
+    METER_SEGMENTS,
+    SOC_MAX,
+    SOC_MIN,
+    SOH_MAX,
+    SOH_MIN,
+    TEMPERATURE_MAX,
+    TEMPERATURE_MIN,
+    VOLTAGE_MAX,
+    VOLTAGE_MIN,
+)
+
 from .colors import (
     BOX_COLORS,
     DIM,
+    GREEN,
     METER_BG,
     NO_DATA_COLOR,
     RED,
@@ -21,23 +40,6 @@ from .colors import (
     voltage_color,
 )
 from .command_line import build_command_line
-from .config import (
-    CELL_TEMPERATURE_COLUMNS,
-    CELL_VOLTAGE_COLUMNS,
-    CURRENT_MAX,
-    CURRENT_MIN,
-    EVENT_LOG_SIZE,
-    METER_SEGMENTS,
-    NO_DATA,
-    SOC_MAX,
-    SOC_MIN,
-    SOH_MAX,
-    SOH_MIN,
-    TEMPERATURE_MAX,
-    TEMPERATURE_MIN,
-    VOLTAGE_MAX,
-    VOLTAGE_MIN,
-)
 from .events import EVENTS, log_command
 from .helpers import (
     cells_summary,
@@ -49,7 +51,6 @@ from .helpers import (
     segment_value,
     spans_html,
 )
-from .parameters import BUP_ERRORS, DEVICES
 
 SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
 
@@ -255,10 +256,38 @@ def render_metric(label, unit, minimum, maximum, color, minimum_segments=0):
 # WIDGETS
 # =================================================
 
+BUS_STATE_COLORS = {
+    "CONNECTED": GREEN,
+    "DISCONNECTED": RED,
+    "SIMULATION": YELLOW,
+}
+
+
 def render_can_status(parameters, box):
 
-    render_kv('Bus').set('VCAN')
-    render_kv('Bitrate').set('500 kbit/s')
+    bus = parameters["bus"]
+
+    source = render_kv('Source')
+    bitrate = render_kv('Bitrate')
+    state = render_kv('State')
+
+    def update_bus():
+
+        source.set('—' if bus["source"] == NO_DATA else bus["source"])
+
+        rate = bus["bitrate"]
+        bitrate.set(fmt(rate / 1000, ' kbit/s') if is_number(rate) else '—')
+
+        # Frames per second only make sense for the real adapter
+        fps = bus["frames_per_second"]
+        suffix = f'  {fps} fr/s' if bus["state"] == "CONNECTED" and is_number(fps) else ''
+
+        state.set(
+            f'● {text(bus["state"])}{suffix}',
+            BUS_STATE_COLORS.get(bus["state"], DIM),
+        )
+
+    live(box, update_bus)
 
     with box.right:
 

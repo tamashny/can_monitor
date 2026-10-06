@@ -1,15 +1,19 @@
 import yaml
 
-
-CANMAP_FILE = "../canmap.yaml"
-
 # All bits set (0xFF in every byte) means "value not available"
-NO_DATA = "No data"
-
+from parameters import NO_DATA
+from settings import CANMAP_FILE
 
 # Load CAN protocol description
 with open(CANMAP_FILE, "r", encoding="utf-8") as file:
     canmap = yaml.safe_load(file)
+
+# CAN ID -> (device, frame description)
+FRAMES = {
+    frame["id"]: (device["device"], frame)
+    for device in canmap["map"]
+    for frame in device["frames"]
+}
 
 
 def find_frame(frame_id):
@@ -17,14 +21,15 @@ def find_frame(frame_id):
     Find frame description by CAN ID.
     """
 
-    for device in canmap["map"]:
+    return FRAMES.get(frame_id, (None, None))[1]
 
-        for frame in device["frames"]:
 
-            if frame["id"] == frame_id:
-                return frame
+def find_device(frame_id):
+    """
+    Device that sends the frame, as named in canmap.yaml (imd, cc, bup, ...).
+    """
 
-    return None
+    return FRAMES.get(frame_id, (None, None))[0]
 
 
 def is_no_data(raw_data):
@@ -167,6 +172,17 @@ def decode(frame):
     for item in frame_description["data"]:
 
         data_type = item["type"]
+
+        # The frame is shorter than its description: no data for the field
+        if item["byte"] + item["length"] > len(frame.data):
+
+            if data_type == "bitfield":
+                for bit in item["parameters"]:
+                    parameters[bit["parameter"]] = NO_DATA
+            else:
+                parameters[item["parameter"]] = NO_DATA
+
+            continue
 
         if data_type == "code":
 

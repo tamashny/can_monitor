@@ -1,6 +1,6 @@
 """Debug mode: imitates a working energy storage by changing PARAMETERS.
 
-Started with `python app/app.py --debug`. The model is simple but keeps the
+Started with `python app/main.py --debug`. The model is simple but keeps the
 values consistent with each other:
 
 - the converter (БУП) goes through its states: init -> precharge -> idle ->
@@ -19,12 +19,13 @@ import time
 
 from nicegui import app
 
-from frontend.config import (
+from parameters import DEVICES, NO_DATA
+from settings import (
+    CAN_BITRATE,
     CELL_TEMPERATURE_COUNT,
     CELL_VOLTAGE_COUNT,
-    NO_DATA,
 )
-from frontend.parameters import DEVICES
+from summary import update_summaries
 
 # Seconds between two steps of the model
 TICK = 0.5
@@ -95,6 +96,12 @@ class Simulator:
     # =================================================
 
     def setup(self):
+
+        self.p["bus"].update(
+            source="simulation",
+            bitrate=CAN_BITRATE,
+            state="SIMULATION",
+        )
 
         bune = self.p["bune"]
 
@@ -380,76 +387,19 @@ class Simulator:
 
     def step_summary(self):
         """
-        Summary of every device for the "systems" table, then of БУНЭ.
+        Every device answers in time; states come from summary.py,
+        the same way as for the real bus.
         """
 
-        imd, cc, bup = self.p["imd"], self.p["cc"], self.p["bup"]
-
-        summaries = {
-            "imd": (
-                normalize(imd["insulation_status"]),
-                count_alarms(imd, ("low_bus_voltage_error", "timeout_error",
-                                   "anomaly_error", "self_test_error"))
-                + (imd["insulation_status"] in ("WARNING", "ALARM")),
-            ),
-            "cc": (
-                normalize(cc["cc_status"]),
-                count_alarms(cc, ("cell_overvoltage", "cell_undervoltage",
-                                  "cell_disbalance", "voltage_sensor_connection",
-                                  "cell_overheat", "cell_overcooling",
-                                  "temperature_sensor_connection")),
-            ),
-            "bup": None,
-            "pusk": ("OK", 0),
-            "so": ("OK", 0),
-        }
-
-        bup_errors = count_alarms(bup, ("dc_overvoltage", "dc_undervoltage",
-                                        "dc_overcurrent", "dc_igbt_driver_error"))
-        summaries["bup"] = ("ALARM" if bup_errors else "OK", bup_errors)
-
         for key, _, _, link_max in DEVICES:
+            self.p[key]["link"] = random.randint(5, int(link_max * 0.8))
 
-            if key not in summaries:
-                continue
-
-            state, errors = summaries[key]
-
-            self.p[key].update(
-                state=state,
-                errors=errors,
-                link=random.randint(5, int(link_max * 0.8)),
-            )
-
-        states = [self.p[key]["state"] for key in summaries]
-
-        if "ALARM" in states:
-            overall = "ALARM"
-        elif "WARNING" in states:
-            overall = "WARNING"
-        else:
-            overall = "OK"
-
-        self.p["bune"].update(
-            state=overall,
-            warnings=states.count("WARNING"),
-            errors=sum(self.p[key]["errors"] for key in summaries),
-        )
+        update_summaries(self.p)
 
 
 def is_running(so):
 
     return isinstance(so["fan1_rpm"], (int, float)) and so["fan1_rpm"] > 0
-
-
-def normalize(status):
-
-    return "NONE" if status in ("NO_DATA", NO_DATA) else status
-
-
-def count_alarms(device, keys):
-
-    return sum(device[key] == "ALARM" for key in keys)
 
 
 def start_simulator(parameters):

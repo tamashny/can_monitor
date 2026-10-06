@@ -1,0 +1,102 @@
+# Settings of the CAN monitor.
+# Changes take effect after the dashboard is restarted.
+
+
+# =================================================
+# CAN ADAPTER (SLCAN on a serial port)
+# =================================================
+
+can:
+  interface: slcan          # python-can interface
+  port: COM3                # serial port of the adapter (Linux: /dev/ttyACM0)
+  bitrate: 500000           # CAN bus speed, bit/s
+  serial_baudrate: 115200   # speed of the serial link to the adapter
+  reconnect_interval: 3     # s between attempts to open the port
+
+
+# =================================================
+# DASHBOARD
+# =================================================
+
+dashboard:
+  port: 8080                # web page: http://localhost:8080
+  refresh_interval: 0.5     # s, how often the boxes redraw changed values
+  meter_segments: 15        # blocks in a meter bar
+
+
+# =================================================
+# EVENT LOG
+# =================================================
+
+event_log:
+  size: 500                 # entries kept in memory and shown
+  watch_interval: 0.5       # s, how often parameters are checked for changes
+
+
+# =================================================
+# LINK TIMEOUTS, ms
+# A device is "lost" when no frame came from it for longer
+# =================================================
+
+link_timeouts:
+  imd: 100                  # СКИ
+  cc: 50                    # КК
+  bup: 50                   # БУП
+  pusk: 100                 # ПУСК
+  so: 100                   # СО
+
+
+# =================================================
+# THRESHOLDS
+# Meters show min..max; colours change at the limits
+# =================================================
+
+soc:                        # %
+  min: 0
+  max: 100
+  red_max: 20               # below — red
+  yellow_max: 60            # below — yellow, above — green
+
+soh:                        # %
+  min: 60
+  max: 100
+  red_max: 75
+  yellow_max: 85
+
+voltage:                    # V, storage
+  min: 500
+  max: 1000
+  red_low: 600              # below — red
+  yellow: 700               # below — yellow
+  green_max: 1000           # up to — green, above — red
+
+current:                    # A
+  min: 0
+  max: 1000
+  green_max: 700            # up to — green
+  yellow_max: 900           # up to — yellow, above — red
+
+temperature:                # °C
+  min: -40
+  max: 80
+  blue_dark_max: -20
+  blue_max: 0               # up to — blue
+  cyan_max: 10              # up to — cyan
+  white_max: 40             # up to — white
+  yellow_max: 60            # up to — yellow, above — red
+
+
+# =================================================
+# CELLS MAP
+# =================================================
+
+cells:
+  voltage_count: 70
+  temperature_count: 105
+  voltage_columns: 10       # tiles in a row
+  temperature_columns: 15
+
+  # Cell voltage, V — placeholder values, set real ones
+  voltage_red_low: 8
+  voltage_yellow: 10
+  voltage_green_max: 14

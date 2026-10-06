@@ -1,6 +1,6 @@
-can:
-  interface: vcan0
-  bitrate: 500000
+# CAN frames of bus 1 (see docs/can_map.xlsx).
+# device — key of the device in app/parameters.py, parameter — name of the value.
+# Bus settings (port, bitrate) are in config/settings.yaml.
 
 map:
   - device: imd
