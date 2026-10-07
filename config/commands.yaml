@@ -1,0 +1,19 @@
+# Operator commands for the command line.
+# The command line offers these names; Enter runs the typed command.
+#
+# Every command sends one CAN frame. The byte layout of that frame is
+# described in config/canmap.yaml, here only its CAN ID and the values
+# of its parameters are given.
+#
+# Format:
+#
+#   commands:
+#     - name: /open contactors          text typed in the command line
+#       description: open the power contactors
+#       frame: 0x219                    CAN ID of the frame (see canmap.yaml)
+#       values:                         parameters of the frame
+#         contactor: OPEN
+#
+# No commands are defined yet.
+
+commands: []

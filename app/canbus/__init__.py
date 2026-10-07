@@ -1,1 +1,2 @@
-"""CAN bus: frame decoding (protocol.py) and reading from an SLCAN adapter (reader.py)."""
+"""CAN bus: frame decoding (protocol.py), reading from an SLCAN adapter
+(reader.py) and operator commands (commands.py)."""

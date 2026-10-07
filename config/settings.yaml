@@ -9,7 +9,7 @@
 can:
   interface: slcan          # python-can interface
   port: COM3                # serial port of the adapter (Linux: /dev/ttyACM0)
-  bitrate: 500000           # CAN bus speed, bit/s
+  bitrate: 250000           # CAN bus speed, bit/s (BUNEcan starts at 250k)
   serial_baudrate: 115200   # speed of the serial link to the adapter
   reconnect_interval: 3     # s between attempts to open the port
 
@@ -38,12 +38,12 @@ event_log:
 # A device is "lost" when no frame came from it for longer
 # =================================================
 
-link_timeouts:
-  imd: 100                  # СКИ
-  cc: 50                    # КК
-  bup: 50                   # БУП
-  pusk: 100                 # ПУСК
-  so: 100                   # СО
+link_timeouts:               # twice the period of the device's frames
+  imd: 200                  # СКИ, frames every 100 ms
+  cc: 100                   # КК, every 50 ms
+  bup: 200                  # БУП, every 100 ms
+  pusk: 200                 # ПУСК
+  so: 200                   # СО
 
 
 # =================================================

@@ -13,6 +13,7 @@ CONFIG_DIR = PROJECT_DIR / "config"
 SETTINGS_FILE = CONFIG_DIR / "settings.yaml"
 CANMAP_FILE = CONFIG_DIR / "canmap.yaml"
 PATTERN_FILE = CONFIG_DIR / "pattern.yaml"
+COMMANDS_FILE = CONFIG_DIR / "commands.yaml"
 
 with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
     _settings = yaml.safe_load(file)

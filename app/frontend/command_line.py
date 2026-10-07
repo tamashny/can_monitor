@@ -1,21 +1,12 @@
 from nicegui import ui
 
-COMMANDS = [
-    '/restart',
-    '/close contactors',
-    '/open contactors',
-    '/status',
-    '/shutdown',
-    '/reset',
-    '/start cooling',
-    '/stop cooling',
-]
+from canbus.commands import command_names
 
 
 def build_command_line(on_command=None):
     """
-    Command input with a pop-up list of commands.
-    Enter passes the typed text to on_command(text).
+    Command input with a pop-up list of suggested commands
+    (canbus/commands.py). Enter passes the typed text to on_command(text).
     """
 
     # =================================================
@@ -45,9 +36,16 @@ def build_command_line(on_command=None):
 
         with ui.element('div').classes('command-popup') as command_popup:
 
-            with ui.element('div').classes('command-list'):
+            command_list = ui.element('div').classes('command-list')
 
-                for command in COMMANDS:
+        # Suggestions are rebuilt on every opening: ports come and go
+        def fill_commands():
+
+            command_list.clear()
+
+            with command_list:
+
+                for command in command_names():
 
                     ui.button(
                         command,
@@ -79,6 +77,7 @@ def build_command_line(on_command=None):
         # =================================================
 
         def open_commands():
+            fill_commands()
             command_popup.style('display: block;')
             click_outside_overlay.style('display: block;')
 

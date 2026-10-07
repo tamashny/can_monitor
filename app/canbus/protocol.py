@@ -214,3 +214,111 @@ def decode(frame):
             )
 
     return parameters
+
+
+# =================================================
+# ENCODING: values -> frame data (the reverse of decode)
+# =================================================
+
+def raw_code(value, values):
+    """
+    Name of a code ("OK") -> its number by the "values" table of canmap.yaml.
+    """
+
+    if values is None:
+        return int(value)
+
+    for number, name in values.items():
+
+        # YAML may turn names like YES into booleans: compare as text
+        if str(name).upper() == str(value).upper():
+            return number
+
+    raise ValueError(f"no code for {value!r}")
+
+
+def scale_of(item):
+
+    scale = item.get("scale", 1)
+
+    if isinstance(scale, str):
+        scale = float(scale.replace(",", "."))
+
+    return scale
+
+
+def encode_metric(value, item):
+
+    length = item["length"]
+    scale = scale_of(item)
+
+    raw = value * scale if scale >= 1 else value / scale
+    raw = round(raw)
+
+    if item.get("encoding") == "sign_magnitude":
+
+        sign_bit = 1 << (length * 8 - 1)
+        magnitude = min(abs(raw), sign_bit - 1)
+        raw = magnitude | (sign_bit if raw < 0 else 0)
+
+    # All ones means "no data": the largest real value is one less
+    raw = max(0, min(raw, (1 << (length * 8)) - 2))
+
+    order = "big" if item.get("byte_order") == "big_endian" else "little"
+
+    return raw.to_bytes(length, byteorder=order)
+
+
+def encode(frame_id, values):
+    """
+    Build the data of a frame from parameter values named as in canmap.yaml.
+    Values that are missing or NO_DATA are sent as all ones (0xFF...).
+    """
+
+    frame_description = find_frame(frame_id)
+
+    if frame_description is None:
+        raise ValueError(f"frame 0x{frame_id:03X} is not in canmap.yaml")
+
+    size = max(item["byte"] + item["length"] for item in frame_description["data"])
+    data = bytearray(b"\xFF" * size)
+
+    for item in frame_description["data"]:
+
+        byte = item["byte"]
+        length = item["length"]
+        data_type = item["type"]
+
+        if data_type == "bitfield":
+
+            bits = item["parameters"]
+
+            if all(values.get(bit["parameter"], NO_DATA) == NO_DATA for bit in bits):
+                continue
+
+            field = 0
+
+            for bit in bits:
+
+                value = values.get(bit["parameter"], NO_DATA)
+
+                if value != NO_DATA:
+                    field |= raw_code(value, bit.get("values")) << bit["bit"]
+
+            data[byte] = field
+
+            continue
+
+        value = values.get(item["parameter"], NO_DATA)
+
+        if value == NO_DATA:
+            continue
+
+        if data_type == "code":
+            raw = raw_code(value, item.get("values"))
+            data[byte:byte + length] = raw.to_bytes(length, byteorder="little")
+
+        elif data_type == "metric":
+            data[byte:byte + length] = encode_metric(value, item)
+
+    return bytes(data)

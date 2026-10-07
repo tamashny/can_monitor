@@ -69,8 +69,8 @@ map:
             type: code
             parameter: resistance_calculated
             values:
-              0: NOT
-              1: YES
+              0: "NOT"
+              1: "YES"
 
           - byte: 1
             length: 2
@@ -91,8 +91,8 @@ map:
             type: code
             parameter: bus_voltage_calculated
             values:
-              0: NOT
-              1: YES
+              0: "NOT"
+              1: "YES"
 
           - byte: 6
             length: 2

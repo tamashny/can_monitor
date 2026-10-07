@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from nicegui import ui
 
+from canbus.commands import execute
 from parameters import BUP_ERRORS, DEVICES, NO_DATA
 from settings import (
     CELL_TEMPERATURE_COLUMNS,
@@ -650,6 +651,12 @@ def event_html(event):
     )
 
 
+def run_command(text):
+
+    ok, result = execute(text)
+    log_command(text, result, ok)
+
+
 def render_event_log(parameters, box):
 
     # Newest entry at the bottom, next to the command line:
@@ -658,7 +665,7 @@ def render_event_log(parameters, box):
         lines = ui.element('div').classes('log-lines')
 
     with ui.element('div').classes('log-input'):
-        build_command_line(on_command=log_command)
+        build_command_line(on_command=run_command)
 
     shown = 0
 

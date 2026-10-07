@@ -41,6 +41,13 @@ CELL_ARRAYS = {
 # How often link times and summaries are updated, s
 TICK = 0.25
 
+# CAN bitrates an SLCAN adapter can be set to, bit/s
+SLCAN_BITRATES = (10000, 20000, 50000, 83300, 100000, 125000, 250000, 500000, 750000, 1000000)
+
+# The running reader, for the /connect and /disconnect commands
+# (None in --debug mode)
+READER = None
+
 
 class CanReader:
 
@@ -49,6 +56,10 @@ class CanReader:
         self.p = parameters
         self.port = port
         self.interface = interface
+        self.bitrate = CAN_BITRATE
+
+        # False after /disconnect: the port stays closed until /connect
+        self.enabled = True
 
         # Device key -> time.monotonic() of its last frame
         self.last_seen = {}
@@ -58,14 +69,37 @@ class CanReader:
         self.counted_at = time.monotonic()
 
         self.stopping = threading.Event()
+        # Set when the port or bitrate changed: reopen the bus now
+        self.changed = threading.Event()
         self.thread = None
 
+        self.show_source()
+        self.p["bus"].update(state="DISCONNECTED", frames_per_second=0)
+
+    def show_source(self):
+
         self.p["bus"].update(
-            source=f"{interface} {port}",
-            bitrate=CAN_BITRATE,
-            state="DISCONNECTED",
-            frames_per_second=0,
+            source=f"{self.interface} {self.port}",
+            bitrate=self.bitrate,
         )
+
+    # =================================================
+    # COMMANDS (/connect, /disconnect)
+    # =================================================
+
+    def connect(self, port, bitrate):
+
+        self.port = port
+        self.bitrate = bitrate
+        self.enabled = True
+
+        self.show_source()
+        self.changed.set()
+
+    def disconnect(self):
+
+        self.enabled = False
+        self.changed.set()
 
     # =================================================
     # THREAD
@@ -83,6 +117,7 @@ class CanReader:
     def stop(self):
 
         self.stopping.set()
+        self.changed.set()
 
         if self.thread:
             self.thread.join(timeout=2)
@@ -97,9 +132,16 @@ class CanReader:
         return can.Bus(
             interface=self.interface,
             channel=self.port,
-            bitrate=CAN_BITRATE,
+            bitrate=self.bitrate,
             **options,
         )
+
+    def wait(self, seconds):
+        """
+        Pause, but wake up at once on /connect, /disconnect or stop.
+        """
+
+        self.changed.wait(seconds)
 
     def run(self):
 
@@ -107,25 +149,34 @@ class CanReader:
 
         while not self.stopping.is_set():
 
+            self.changed.clear()
+
+            if not self.enabled:
+                bus_status.update(state="DISCONNECTED", error="disconnected by the operator")
+                self.wait(1)
+                continue
+
             try:
 
                 with self.open_bus() as bus:
 
                     bus_status.update(state="CONNECTED", error=NO_DATA)
 
-                    while not self.stopping.is_set():
+                    while not self.stopping.is_set() and not self.changed.is_set():
 
                         message = bus.recv(timeout=0.5)
 
                         if message is not None:
                             self.handle(message)
 
+                bus_status["state"] = "DISCONNECTED"
+
             # Port missing, busy or unplugged: try again later
             except (can.CanError, OSError, ValueError) as error:
 
                 bus_status.update(state="DISCONNECTED", error=str(error))
 
-                self.stopping.wait(CAN_RECONNECT_INTERVAL)
+                self.wait(CAN_RECONNECT_INTERVAL)
 
     # =================================================
     # FRAMES
@@ -203,7 +254,10 @@ def start_reader(parameters, port=CAN_PORT):
     Read the bus while the web server runs.
     """
 
+    global READER
+
     reader = CanReader(parameters, port)
+    READER = reader
 
     # Only in the process that serves the page: with auto-reload the
     # parent process must not hold the serial port

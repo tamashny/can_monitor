@@ -273,7 +273,7 @@ COMMAND_LINE_CSS = '''
     bottom: calc(100% + 9px);
 
     width: min(480px, 100%);
-    height: 216px;
+    max-height: 216px;
 
     display: none;
 
@@ -290,7 +290,7 @@ COMMAND_LINE_CSS = '''
 
 .command-list {
     width: 100%;
-    height: 100%;
+    max-height: 214px;
 
     overflow-y: auto;
     overflow-x: hidden;

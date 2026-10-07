@@ -17,7 +17,7 @@ from nicegui import app
 from parameters import DEVICES
 from settings import EVENT_LOG_SIZE, EVENT_WATCH_INTERVAL
 
-from .colors import DIM, HI, event_color
+from .colors import DIM, HI, RED, event_color
 from .helpers import fmt, is_number
 
 
@@ -50,10 +50,16 @@ def log_event(source, parts):
     )
 
 
-def log_command(command):
+def log_command(command, result, ok):
+    """
+    Typed command and what happened with it (canbus/commands.py).
+    """
 
-    # Sending to the CAN bus is not implemented yet, the command is only logged
-    log_event('cmd', [(command, 'v', HI)])
+    log_event('cmd', [
+        (command, 'v', HI),
+        ('  ', ''),
+        (result, 'v', None if ok else RED),
+    ])
 
 
 def show(value):
