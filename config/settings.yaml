@@ -3,15 +3,19 @@
 
 
 # =================================================
-# CAN ADAPTER (SLCAN on a serial port)
+# CAN ADAPTERS (SLCAN on serial ports), one per bus
 # =================================================
 
 can:
   interface: slcan          # python-can interface
-  port: COM3                # serial port of the adapter (Linux: /dev/ttyACM0)
-  bitrate: 250000           # CAN bus speed, bit/s (BUNEcan starts at 250k)
+  port: COM3                # adapter of the main bus, CAN1 (Linux: /dev/ttyACM0)
+  reserve_port: COM4        # adapter of the reserve bus, CAN2
+  bitrate: 250000           # CAN bus speed of both buses, bit/s (bus 1 of the CAN map)
   serial_baudrate: 115200   # speed of the serial link to the adapter
   reconnect_interval: 3     # s between attempts to open the port
+  invalid_limit: 3          # invalid frames in a row (DLC, CRC, CNT) that drop the link
+  restore_count: 3          # valid frames in a row, CNT + 1, that restore it (document 03, REQ-1-8)
+  map_file: ../ESMS CAN map/map/esd.yaml   # CAN map, relative to the project folder
 
 
 # =================================================
@@ -21,7 +25,7 @@ can:
 dashboard:
   port: 8080                # web page: http://localhost:8080
   refresh_interval: 0.5     # s, how often the boxes redraw changed values
-  meter_segments: 15        # blocks in a meter bar
+  meter_segments: 12        # blocks in a meter bar
 
 
 # =================================================
@@ -38,12 +42,16 @@ event_log:
 # A device is "lost" when no frame came from it for longer
 # =================================================
 
-link_timeouts:               # twice the period of the device's frames
-  imd: 200                  # СКИ, frames every 100 ms
-  cc: 100                   # КК, every 50 ms
-  bup: 200                  # БУП, every 100 ms
-  pusk: 200                 # ПУСК
-  so: 200                   # СО
+link_timeouts:               # timeout_ms of the status frame in the CAN map
+  bune: 300                 # БУНЭ, heartbeat every 100 ms on bus 1 (its status is on bus 2)
+  puer: 300                 # ПУЭР, every 100 ms
+  imd: 300                  # СКИ, every 100 ms
+  bem: 300                  # БВИ, every 100 ms
+  bup: 150                  # БУП, every 50 ms
+  cc: 150                   # КК, every 50 ms
+  bust_a: 300               # БУСТ-А, every 100 ms
+  bust_b: 300               # БУСТ-Б, every 100 ms
+  plod: 300                 # ПЛОД, every 100 ms
 
 
 # =================================================
@@ -76,14 +84,14 @@ current:                    # A
   green_max: 700            # up to — green
   yellow_max: 900           # up to — yellow, above — red
 
-temperature:                # °C
-  min: -40
-  max: 80
-  blue_dark_max: -20
-  blue_max: 0               # up to — blue
-  cyan_max: 10              # up to — cyan
-  white_max: 40             # up to — white
-  yellow_max: 60            # up to — yellow, above — red
+temperature:                # °C, the colour changes smoothly between the points
+  min: -40                  # storage scale: blue
+  max: 80                   # red, on both scales (КК alarm threshold)
+  cells_min: -20            # cells scale: blue (КК alarm threshold)
+  cyan: 0
+  lime: 10
+  green: 30
+  yellow: 60                # КК warning threshold
 
 
 # =================================================
@@ -91,12 +99,13 @@ temperature:                # °C
 # =================================================
 
 cells:
-  voltage_count: 70
-  temperature_count: 105
-  voltage_columns: 10       # tiles in a row
-  temperature_columns: 15
+  voltage_count: 68         # array_cc_v, groups of 10 cells
+  temperature_count: 102    # array_cc_t, sensors
+  voltage_columns: 17       # tiles in a row
+  temperature_columns: 17
 
-  # Cell voltage, V — placeholder values, set real ones
-  voltage_red_low: 8
-  voltage_yellow: 10
-  voltage_green_max: 14
+  # Group voltage, V — default thresholds of КК (objects 0x2020..0x2023)
+  voltage_red_low: 8        # below — red
+  voltage_yellow: 10        # below — yellow
+  voltage_green_max: 16     # up to — green
+  voltage_yellow_max: 18    # up to — yellow, above — red

@@ -14,10 +14,10 @@ from datetime import datetime
 
 from nicegui import app
 
-from parameters import DEVICES
+from parameters import DEVICES, NO_DATA
 from settings import EVENT_LOG_SIZE, EVENT_WATCH_INTERVAL
 
-from .colors import DIM, HI, RED, event_color
+from .colors import DIM, HI, RED, YELLOW, event_color
 from .helpers import fmt, is_number
 
 
@@ -35,7 +35,6 @@ _next_seq = itertools.count(1)
 
 # Names of the PARAMETERS sections in the log
 SOURCES = {key: name for key, name, *_ in DEVICES}
-SOURCES["bune"] = "control"
 
 
 def log_event(source, parts):
@@ -60,6 +59,38 @@ def log_command(command, result, ok):
         ('  ', ''),
         (result, 'v', None if ok else RED),
     ])
+
+
+def log_emcy(device, values):
+    """
+    Event frame (EMCY) of a device. КК names its codes and sends EVENT_UP /
+    EVENT_DOWN, the others send a number and the event flags.
+    """
+
+    code = values.get("eec")
+    name = f'0x{code:04X}' if is_number(code) else str(code)
+
+    if "event" in values:
+        appeared = values["event"] == "EVENT_UP"
+        warning = name.endswith("_W")
+    else:
+        appeared = values.get("event_flags.appeared") == "ON"
+        warning = values.get("event_flags.is_fault") != "ON"
+
+    color = DIM if not appeared else YELLOW if warning else RED
+
+    parts = [
+        ('emcy ', 'k'),
+        (name, 'v', color),
+        (' up' if appeared else ' down', 'dim'),
+    ]
+
+    number = values.get("object")
+
+    if is_number(number) and number:
+        parts.append((f' object {number:g}', 'dim'))
+
+    log_event(SOURCES.get(device, device), parts)
 
 
 def show(value):
@@ -92,6 +123,11 @@ def start_event_watcher(parameters):
             old = previous.get((device, key))
 
             if value == old or (is_number(value) and is_number(old)):
+                continue
+
+            # A lost device clears all its values at once: the log gets one
+            # line about its health instead of a line per value
+            if device != "bus" and NO_DATA in (value, old):
                 continue
 
             log_event(

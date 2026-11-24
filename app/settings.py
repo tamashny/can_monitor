@@ -11,12 +11,14 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent
 CONFIG_DIR = PROJECT_DIR / "config"
 
 SETTINGS_FILE = CONFIG_DIR / "settings.yaml"
-CANMAP_FILE = CONFIG_DIR / "canmap.yaml"
 PATTERN_FILE = CONFIG_DIR / "pattern.yaml"
 COMMANDS_FILE = CONFIG_DIR / "commands.yaml"
 
 with open(SETTINGS_FILE, "r", encoding="utf-8") as file:
     _settings = yaml.safe_load(file)
+
+# Main file of the CAN map; a relative path starts at the project folder
+CANMAP_FILE = (PROJECT_DIR / _settings["can"]["map_file"]).resolve()
 
 
 # =================================================
@@ -27,9 +29,12 @@ _can = _settings["can"]
 
 CAN_INTERFACE = _can["interface"]
 CAN_PORT = _can["port"]
+CAN_RESERVE_PORT = _can["reserve_port"]
 CAN_BITRATE = _can["bitrate"]
 CAN_SERIAL_BAUDRATE = _can["serial_baudrate"]
 CAN_RECONNECT_INTERVAL = _can["reconnect_interval"]
+CAN_INVALID_LIMIT = _can["invalid_limit"]
+CAN_RESTORE_COUNT = _can["restore_count"]
 
 # =================================================
 # DASHBOARD
@@ -91,11 +96,11 @@ _temperature = _settings["temperature"]
 
 TEMPERATURE_MIN = _temperature["min"]
 TEMPERATURE_MAX = _temperature["max"]
-TEMPERATURE_BLUE_DARK_MAX = _temperature["blue_dark_max"]
-TEMPERATURE_BLUE_MAX = _temperature["blue_max"]
-TEMPERATURE_CYAN_MAX = _temperature["cyan_max"]
-TEMPERATURE_WHITE_MAX = _temperature["white_max"]
-TEMPERATURE_YELLOW_MAX = _temperature["yellow_max"]
+TEMPERATURE_CELLS_MIN = _temperature["cells_min"]
+TEMPERATURE_CYAN = _temperature["cyan"]
+TEMPERATURE_LIME = _temperature["lime"]
+TEMPERATURE_GREEN = _temperature["green"]
+TEMPERATURE_YELLOW = _temperature["yellow"]
 
 # =================================================
 # CELLS MAP
@@ -110,3 +115,4 @@ CELL_TEMPERATURE_COLUMNS = _cells["temperature_columns"]
 CELL_VOLTAGE_RED_LOW = _cells["voltage_red_low"]
 CELL_VOLTAGE_YELLOW = _cells["voltage_yellow"]
 CELL_VOLTAGE_GREEN_MAX = _cells["voltage_green_max"]
+CELL_VOLTAGE_YELLOW_MAX = _cells["voltage_yellow_max"]

@@ -21,7 +21,7 @@ def fmt(value, unit='', spec='g'):
 
 def pretty(value):
     """
-    DC_DIRECT_CHARGE -> Direct charge; anything non-text as is.
+    CHARGE_DIRECT -> Charge direct; anything non-text as is.
     """
 
     if not isinstance(value, str):
@@ -30,18 +30,7 @@ def pretty(value):
     if value == NO_DATA:
         return '—'
 
-    if value.startswith("DC_"):
-        value = value[3:]
-
     return value.replace("_", " ").capitalize()
-
-
-def link_value(value, maximum):
-
-    if not is_number(value) or value > maximum:
-        return "None"
-
-    return f"{value} ms"
 
 
 def get_segments(value, minimum, maximum, total, minimum_segments=0):
@@ -56,12 +45,6 @@ def get_segments(value, minimum, maximum, total, minimum_segments=0):
     )
 
     return max(segments, minimum_segments)
-
-
-def segment_value(index, minimum, maximum, total):
-    """Value in the middle of the meter segment `index`."""
-
-    return minimum + (index + 0.5) * (maximum - minimum) / total
 
 
 def cells_summary(values):

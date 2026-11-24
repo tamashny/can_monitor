@@ -1,9 +1,12 @@
-"""Sends the frames of config/canmap.yaml through an SLCAN adapter.
+"""Sends the frames of the CAN map through an SLCAN adapter.
 
 The values come from the simulator of the dashboard (app/simulation), so
 the bus carries a "working" storage: states, voltages, currents, cells.
-Every frame with cycle_ms is sent with its period; the cell data frames
-0x297 go round: voltage frames 1..N, then temperature frames 1..M.
+Every frame with cycle_ms is sent with its period; the multiplexed frames
+of КК go round their arrays, two values per frame.
+
+Command frames (БУНЭ -> device) are never sent: on a bus with real devices
+they could switch contactors or the converter.
 
     python tools/can_sender.py --port COM7 [--bitrate 500000] [--verbose]
 
@@ -22,38 +25,47 @@ sys.path.insert(0, str(APP_DIR))
 import can
 
 from canbus import protocol
+from canmap import CELL_ARRAYS, FRAMES, temperature_sensor
 from parameters import PARAMETERS
 from settings import CAN_BITRATE, CAN_SERIAL_BAUDRATE
 from simulation.simulator import TICK, Simulator
 
-CELL_DATA_FRAME = 0x297
-CELLS_PER_FRAME = 7
-# One cell data frame every ... s
-CELL_FRAME_PERIOD = 0.05
 
-
-def cell_frames(cc):
+def array_values(frame_name, cc, position):
     """
-    Values of all cell data frames, in the order they are sent.
+    Values of a multiplexed frame number `position` of its array.
     """
 
-    frames = []
+    key, fields = CELL_ARRAYS[frame_name]
+    cells = cc[key]
+    free = cc["free_temperatures"]
 
-    for kind, key in (("VOLTAGE", "cell_voltages"), ("TEMPERATURE", "cell_temperatures")):
+    start = position * len(fields) % len(cells)
+    values = {}
 
-        cells = cc[key]
+    for offset, field in enumerate(fields):
 
-        for number in range(1, len(cells) // CELLS_PER_FRAME + 1):
+        place = start + offset
 
-            start = (number - 1) * CELLS_PER_FRAME
-            values = {"parse_type": kind, "parse_index": number}
+        if len(field) == 3 and place in free:
 
-            for i in range(CELLS_PER_FRAME):
-                values[f"parse_data_{i + 1}"] = cells[start + i]
+            # Unknown ROM code: sensor number 31, bus 7 when it is unknown too
+            bus, value = free[place]
 
-            frames.append(values)
+            values[field[0]] = bus or 7
+            values[field[1]] = 31
+            values[field[2]] = value
 
-    return frames
+            continue
+
+        if len(field) == 3:
+            values[field[0]], values[field[1]] = temperature_sensor(place)
+        else:
+            values[field[0]] = place
+
+        values[field[-1]] = cells[place]
+
+    return values
 
 
 def main():
@@ -66,18 +78,18 @@ def main():
 
     simulator = Simulator(PARAMETERS)
 
-    # Periodic frames: (CAN ID, device, period s)
+    # Periodic frames that a device sends about itself
     periodic = [
-        (frame_id, device, frame["cycle_ms"] / 1000)
-        for frame_id, (device, frame) in protocol.FRAMES.items()
-        if "cycle_ms" in frame
+        frame
+        for frame in FRAMES.values()
+        if "cycle_ms" in frame and frame["signals"] and not frame["is_command"]
     ]
 
     now = time.monotonic()
-    next_send = {frame_id: now for frame_id, _, _ in periodic}
+    next_send = {frame["id"]: now for frame in periodic}
+    positions = {name: 0 for name in CELL_ARRAYS}
+    counters = {frame["id"]: 0 for frame in periodic}
     next_tick = now
-    next_cell = now
-    cell_index = 0
 
     sent = errors = 0
     report_at = now + 1
@@ -95,7 +107,10 @@ def main():
 
             nonlocal sent, errors
 
-            data = protocol.encode(frame_id, values)
+            # CNT goes 0..15 separately for every CAN ID
+            data = protocol.encode(frame_id, values, counters[frame_id])
+            counters[frame_id] = (counters[frame_id] + 1) & 0x0F
+
             message = can.Message(arbitration_id=frame_id, data=data, is_extended_id=False)
 
             try:
@@ -118,23 +133,27 @@ def main():
                     simulator.tick()
                     next_tick += TICK
 
-                for frame_id, device, period in periodic:
+                for frame in periodic:
 
-                    if now >= next_send[frame_id]:
-                        send(frame_id, PARAMETERS[device])
-                        next_send[frame_id] += period
+                    frame_id = frame["id"]
 
-                if now >= next_cell:
+                    if now < next_send[frame_id]:
+                        continue
 
-                    frames = cell_frames(PARAMETERS["cc"])
-                    send(CELL_DATA_FRAME, frames[cell_index % len(frames)])
+                    name = frame["name"]
 
-                    cell_index += 1
-                    next_cell += CELL_FRAME_PERIOD
+                    if name in CELL_ARRAYS:
+                        values = array_values(name, PARAMETERS["cc"], positions[name])
+                        positions[name] += 1
+                    else:
+                        values = PARAMETERS[frame["device"]]
+
+                    send(frame_id, values)
+                    next_send[frame_id] += frame["cycle_ms"] / 1000
 
                 if now >= report_at:
-                    mode = PARAMETERS["bup"]["dc_status"]
-                    print(f"{sent} frames sent, {errors} errors, converter {mode}")
+                    bup = PARAMETERS["bup"]
+                    print(f'{sent} frames sent, {errors} errors, converter {bup["state"]} {bup["mode"]}')
                     report_at += 5
 
                 time.sleep(0.002)

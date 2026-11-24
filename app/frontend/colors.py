@@ -2,17 +2,20 @@ from settings import (
     CELL_VOLTAGE_GREEN_MAX,
     CELL_VOLTAGE_RED_LOW,
     CELL_VOLTAGE_YELLOW,
+    CELL_VOLTAGE_YELLOW_MAX,
     CURRENT_GREEN_MAX,
     CURRENT_YELLOW_MAX,
     SOC_RED_MAX,
     SOC_YELLOW_MAX,
     SOH_RED_MAX,
     SOH_YELLOW_MAX,
-    TEMPERATURE_BLUE_DARK_MAX,
-    TEMPERATURE_BLUE_MAX,
-    TEMPERATURE_CYAN_MAX,
-    TEMPERATURE_WHITE_MAX,
-    TEMPERATURE_YELLOW_MAX,
+    TEMPERATURE_CELLS_MIN,
+    TEMPERATURE_CYAN,
+    TEMPERATURE_GREEN,
+    TEMPERATURE_LIME,
+    TEMPERATURE_MAX,
+    TEMPERATURE_MIN,
+    TEMPERATURE_YELLOW,
     VOLTAGE_GREEN_MAX,
     VOLTAGE_RED_LOW,
     VOLTAGE_YELLOW,
@@ -36,7 +39,7 @@ RED = '#dc4c4c'
 
 BLUE = '#5474e8'
 CYAN = '#74e6fc'
-WHITE = '#eeeeee'
+LIME = '#b5e86f'
 
 # Box border colours, referenced by name from pattern.yaml
 BOX_COLORS = {
@@ -51,44 +54,45 @@ BOX_COLORS = {
 NO_DATA_COLOR = METER_BG
 
 
-def shade(color, amount):
+def mix(first, second, share):
     """
-    Darken (amount < 0) or lighten (amount > 0) a #rrggbb colour,
-    amount in -1..1 is the share of black / white mixed in.
+    #rrggbb colour between two others, share 0..1 of the second one.
     """
-
-    target = 255 if amount > 0 else 0
-    amount = abs(amount)
-
-    channels = (
-        int(color[i:i + 2], 16)
-        for i in (1, 3, 5)
-    )
 
     return '#' + ''.join(
-        f'{round(c + (target - c) * amount):02x}'
-        for c in channels
+        f'{round(a + (b - a) * share):02x}'
+        for a, b in (
+            (int(first[i:i + 2], 16), int(second[i:i + 2], 16))
+            for i in (1, 3, 5)
+        )
     )
 
 
-def meter_color(color, position):
+def gradient(value, points):
     """
-    btop-like gradient along a meter: darker at the start, brighter
-    at the end. position is 0..1 along the whole scale.
+    Colour of a value on a scale of (value, colour) points.
     """
 
-    if position < 0.5:
-        return shade(color, -0.9 * (0.5 - position))
+    if value <= points[0][0]:
+        return points[0][1]
 
-    return shade(color, 0.6 * (position - 0.5))
+    for (low, first), (high, second) in zip(points, points[1:]):
+
+        if value <= high:
+            return mix(first, second, (value - low) / (high - low))
+
+    return points[-1][1]
 
 
 STATE_COLORS = {
     "OK": GREEN,
-    "WARN": YELLOW,
     "WARNING": YELLOW,
     "ALARM": RED,
     "CRITICAL_FAULT": RED,
+    "FAULT": RED,
+    "EMERGENCY": RED,
+    "LOST": YELLOW,             # reserve bus: the system still works on the main one
+    "CHECK": YELLOW,
 }
 
 
@@ -155,6 +159,9 @@ def cell_voltage_color(value):
     if value <= CELL_VOLTAGE_GREEN_MAX:
         return GREEN
 
+    if value <= CELL_VOLTAGE_YELLOW_MAX:
+        return YELLOW
+
     return RED
 
 
@@ -169,21 +176,27 @@ def current_color(value):
     return RED
 
 
+# Common part of both temperature scales, they differ only in the cold end
+WARM_POINTS = (
+    (TEMPERATURE_CYAN, CYAN),
+    (TEMPERATURE_LIME, LIME),
+    (TEMPERATURE_GREEN, GREEN),
+    (TEMPERATURE_YELLOW, YELLOW),
+    (TEMPERATURE_MAX, RED),
+)
+
+STORAGE_TEMPERATURE_POINTS = ((TEMPERATURE_MIN, BLUE),) + WARM_POINTS
+CELL_TEMPERATURE_POINTS = ((TEMPERATURE_CELLS_MIN, BLUE),) + WARM_POINTS
+
+
 def temperature_color(value):
+    """
+    Temperature of the storage.
+    """
 
-    if value <= TEMPERATURE_BLUE_DARK_MAX:
-        return BLUE
+    return gradient(value, STORAGE_TEMPERATURE_POINTS)
 
-    if value <= TEMPERATURE_BLUE_MAX:
-        return BLUE
 
-    if value <= TEMPERATURE_CYAN_MAX:
-        return CYAN
+def cell_temperature_color(value):
 
-    if value <= TEMPERATURE_WHITE_MAX:
-        return WHITE
-
-    if value <= TEMPERATURE_YELLOW_MAX:
-        return YELLOW
-
-    return RED
+    return gradient(value, CELL_TEMPERATURE_POINTS)

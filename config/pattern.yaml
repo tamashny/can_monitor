@@ -13,9 +13,9 @@ layout:
 
   columns:
     - 2
-    - 2.6
-    - 2
-    - 2
+    - 3.4
+    - 1.7
+    - 1.7
     - 2
 
   rows:
@@ -28,7 +28,7 @@ layout:
 
     - [A, C, D, E, F]
     - [B, C, D, E, F]
-    - [G, G, H, H, H]
+    - [G, K, H, H, H]
     - [J, J, I, I, I]
 
 
@@ -67,6 +67,11 @@ cells:
   G:
     widget: contactors
     title: "contactors"
+    color: cpu
+
+  K:
+    widget: isolation
+    title: "isolation"
     color: cpu
 
   H:

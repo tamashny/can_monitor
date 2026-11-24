@@ -2,17 +2,17 @@
 # The command line offers these names; Enter runs the typed command.
 #
 # Every command sends one CAN frame. The byte layout of that frame is
-# described in config/canmap.yaml, here only its CAN ID and the values
-# of its parameters are given.
+# described in the CAN map (can.map_file in settings.yaml), here only its
+# CAN ID and the values of its parameters are given.
 #
 # Format:
 #
 #   commands:
-#     - name: /open contactors          text typed in the command line
-#       description: open the power contactors
-#       frame: 0x219                    CAN ID of the frame (see canmap.yaml)
+#     - name: /open k1                  text typed in the command line
+#       description: open the main contactor
+#       frame: 0x214                    CAN ID of the frame (command_puer)
 #       values:                         parameters of the frame
-#         contactor: OPEN
+#         cmd.req_mode.k1: OPEN
 #
 # No commands are defined yet.
 

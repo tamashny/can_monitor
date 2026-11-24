@@ -1,86 +1,101 @@
-"""Summaries for the "systems" table and for БУНЭ.
+"""Summaries for the "systems" table and for the whole storage.
 
 The CAN reader and the simulator call update_summaries() after they have
 written new values into PARAMETERS. For every device it derives:
 
-    state  — NONE / OK / WARNING / ALARM from the device's own status,
-             NONE when the link is lost
-    errors — number of active error flags
+    health   — NONE / OK / WARNING / ALARM, NONE when the link is lost
+    errors   — number of active faults
+    warnings — number of active warnings
 
-and for БУНЭ: the worst state of the devices, the number of devices in
-WARNING and the total number of errors.
+and for the storage (in PARAMETERS["bune"]): the worst health of the
+devices and the total numbers of warnings and errors.
 """
 
-from parameters import BUP_ERRORS, DEVICES, NO_DATA
+from parameters import DEVICES, NO_DATA
+
+# STATE values that mean an active failure
+FAULT_STATES = ("FAULT",)
+
+# States of a bus adapter that delivers frames
+CONNECTED_STATES = ("CONNECTED", "SIMULATION")
+
+# (link of a device, state of the bus adapter, name of the bus)
+BUS_LINKS = (
+    ("link_main", "state", "no link on CAN1"),
+    ("link_reserve", "reserve_state", "no link on CAN2"),
+)
 
 IMD_ERRORS = (
-    "low_bus_voltage_error",
-    "timeout_error",
-    "anomaly_error",
-    "self_test_error",
-)
-
-CC_ERRORS = (
-    "cell_overvoltage",
-    "cell_undervoltage",
-    "cell_disbalance",
-    "voltage_sensor_connection",
-    "cell_overheat",
-    "cell_overcooling",
-    "temperature_sensor_connection",
+    "internal_error.low_bus_voltage_error",
+    "internal_error.timeout_error",
+    "internal_error.anomaly_error",
+    "internal_error.self_test_error",
 )
 
 
-def count_alarms(device, keys):
-
-    return sum(device.get(key) == "ALARM" for key in keys)
-
-
-def status_state(status):
+def active_flags(device, signal, active):
     """
-    NO_DATA / OK / WARNING / ALARM status code -> table state.
+    Names of the active flags of a signal. Devices whose bits are not named
+    in the map send it as a plain number: every set bit counts.
     """
 
-    if status in ("OK", "WARNING", "ALARM"):
-        return status
+    value = device.get(signal)
 
-    return "NONE"
+    if isinstance(value, int):
+        return [f"bit {bit}" for bit in range(value.bit_length()) if value >> bit & 1]
+
+    prefix = f"{signal}."
+
+    return [
+        key[len(prefix):]
+        for key, flag in list(device.items())
+        if key.startswith(prefix) and flag == active
+    ]
+
+
+def count_flags(device, signal, active):
+
+    return len(active_flags(device, signal, active))
 
 
 def imd_summary(imd):
+    """
+    СКИ has its own frames, without the common STATE / WARN / FAULT.
+    """
 
-    state = status_state(imd["insulation_status"])
+    status = imd["insulation_status"]
 
-    if imd["imd_status"] == "CRITICAL_FAULT":
-        state = "ALARM"
+    health = status if status in ("OK", "WARNING", "ALARM") else "NONE"
 
-    errors = count_alarms(imd, IMD_ERRORS) + (state in ("WARNING", "ALARM"))
+    if imd["state"] == "CRITICAL_FAULT":
+        health = "ALARM"
 
-    return state, errors
+    errors = sum(imd[key] == "ALARM" for key in IMD_ERRORS) + (health == "ALARM")
 
-
-def cc_summary(cc):
-
-    return status_state(cc["cc_status"]), count_alarms(cc, CC_ERRORS)
-
-
-def bup_summary(bup):
-
-    if bup["dc_status"] == NO_DATA:
-        return "NONE", 0
-
-    errors = count_alarms(bup, BUP_ERRORS)
-
-    return ("ALARM" if errors else "OK"), errors
+    return health, errors, int(health == "WARNING")
 
 
-# Devices whose frames are described in canmap.yaml.
-# The others are OK as long as their link is alive.
-DEVICE_SUMMARIES = {
-    "imd": imd_summary,
-    "cc": cc_summary,
-    "bup": bup_summary,
-}
+def profile_summary(device):
+    """
+    Devices with the common status frame of the CAN protocol.
+    """
+
+    if device["state"] == NO_DATA:
+        # БУНЭ sends its status on bus 2: on bus 1 only its heartbeat is seen
+        alive = device.get("nmt_state", NO_DATA) != NO_DATA
+        return ("OK" if alive else "NONE"), 0, 0
+
+    errors = count_flags(device, "fault", "ALARM")
+    warnings = count_flags(device, "warn", "WARNING")
+
+    if errors or device["state"] in FAULT_STATES:
+        health = "ALARM"
+    elif warnings:
+        health = "WARNING"
+    else:
+        health = "OK"
+
+    return health, errors, warnings
 
 
 def link_alive(link, link_max):
@@ -88,25 +103,68 @@ def link_alive(link, link_max):
     return isinstance(link, (int, float)) and link <= link_max
 
 
+def bus_is_on(bus, state_key):
+    """
+    The adapter of this bus works, so its links mean something.
+    """
+
+    return bus[state_key] in CONNECTED_STATES
+
+
+def working_buses(bus):
+    """
+    How many bus adapters deliver frames.
+    """
+
+    return sum(bus_is_on(bus, state_key) for _, state_key, _ in BUS_LINKS)
+
+
+def lost_buses(device, bus, link_max):
+    """
+    Names of the working buses on which the device has no link.
+    """
+
+    return [
+        name
+        for link_key, state_key, name in BUS_LINKS
+        if bus_is_on(bus, state_key) and not link_alive(device[link_key], link_max)
+    ]
+
+
 def update_summaries(parameters):
+
+    bus = parameters["bus"]
 
     states = []
     errors_total = 0
+    warnings_total = 0
 
     for key, _, _, link_max in DEVICES:
 
         device = parameters[key]
 
-        summary = DEVICE_SUMMARIES.get(key)
-        state, errors = summary(device) if summary else ("OK", 0)
+        summary = imd_summary if key == "imd" else profile_summary
+        health, errors, warnings = summary(device)
 
-        if not link_alive(device["link"], link_max):
-            state = "NONE"
+        lost = lost_buses(device, bus, link_max)
+        working = working_buses(bus)
 
-        device.update(state=state, errors=errors)
+        # No link on any bus: nothing is known about the device.
+        # No link on one of two: it still works, this is a warning
+        if len(lost) == working:
+            health = "NONE"
 
-        states.append(state)
+        elif lost:
+            warnings += len(lost)
+
+            if health == "OK":
+                health = "WARNING"
+
+        device.update(health=health, errors=errors, warnings=warnings)
+
+        states.append(health)
         errors_total += errors
+        warnings_total += warnings
 
     if "ALARM" in states:
         overall = "ALARM"
@@ -118,7 +176,7 @@ def update_summaries(parameters):
         overall = "NONE"
 
     parameters["bune"].update(
-        state=overall,
-        warnings=states.count("WARNING"),
-        errors=errors_total,
+        overall=overall,
+        total_warnings=warnings_total,
+        total_errors=errors_total,
     )

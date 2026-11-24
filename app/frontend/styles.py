@@ -116,6 +116,18 @@ BOX_CSS = '''
     white-space: nowrap;
 }
 
+/* A value too long for the line ends with "…", its label stays whole */
+.kv > .k {
+    flex: none;
+}
+
+.kv > .v {
+    min-width: 0;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .k {
     color: var(--fg);
 }
@@ -162,6 +174,16 @@ BOX_CSS = '''
     column-gap: 2ch;
 
     white-space: nowrap;
+}
+
+/* Devices: columns spread evenly over the width, rows over the height */
+.systems-table {
+    grid-template-columns: repeat(7, auto);
+    justify-content: space-between;
+    align-content: space-between;
+
+    column-gap: 0.5ch;
+    min-height: 100%;
 }
 
 /* Header row stays on top while the rows scroll */
@@ -405,6 +427,22 @@ CELLS_MAP_CSS = '''
 .cells-map-cell:hover {
     outline: 1px solid var(--title);
     outline-offset: -1px;
+}
+
+/* Border labels of the cells box: full text, or a short one in a narrow window */
+.tab-short {
+    display: none;
+}
+
+@media (max-width: 1399px) {
+
+    .tab-full {
+        display: none;
+    }
+
+    .tab-short {
+        display: inline;
+    }
 }
 '''
 

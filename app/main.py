@@ -1,9 +1,10 @@
 """CAN monitor dashboard.
 
-    python app/main.py              read the bus from the SLCAN adapter
-                                    (port and bitrate in config/settings.yaml)
-    python app/main.py --port COM5  same, another serial port
-    python app/main.py --debug      no adapter: every value is imitated
+    python app/main.py              read both buses from two SLCAN adapters
+                                    (ports and bitrate in config/settings.yaml)
+    python app/main.py --port COM5 --reserve-port COM6
+                                    same, other serial ports
+    python app/main.py --debug      no adapters: every value is imitated
 """
 
 import argparse
@@ -23,7 +24,13 @@ from frontend.events import start_event_watcher
 from frontend.layout import build_grid_template, load_pattern
 from frontend.styles import apply_global_styles
 from parameters import PARAMETERS
-from settings import CAN_PORT, DASHBOARD_PORT, DASHBOARD_REFRESH_INTERVAL, PATTERN_FILE
+from settings import (
+    CAN_PORT,
+    CAN_RESERVE_PORT,
+    DASHBOARD_PORT,
+    DASHBOARD_REFRESH_INTERVAL,
+    PATTERN_FILE,
+)
 from simulation.simulator import start_simulator
 
 
@@ -39,7 +46,12 @@ def parse_arguments():
     parser.add_argument(
         "--port",
         default=CAN_PORT,
-        help=f"serial port of the SLCAN adapter (default: {CAN_PORT})",
+        help=f"serial port of the main bus adapter (default: {CAN_PORT})",
+    )
+    parser.add_argument(
+        "--reserve-port",
+        default=CAN_RESERVE_PORT,
+        help=f"serial port of the reserve bus adapter (default: {CAN_RESERVE_PORT})",
     )
 
     # NiceGUI's reload process may add arguments of its own
@@ -92,7 +104,7 @@ def main():
     if arguments.debug:
         start_simulator(PARAMETERS)
     else:
-        start_reader(PARAMETERS, arguments.port)
+        start_reader(PARAMETERS, arguments.port, arguments.reserve_port)
 
     # Logs state changes in PARAMETERS for the event log
     start_event_watcher(PARAMETERS)

@@ -10,9 +10,8 @@ Two kinds:
 
 - commands from config/commands.yaml. Such a command has a name, a
   description, the CAN ID of its frame and the values of the frame
-  parameters; the byte layout of the frame is described in
-  config/canmap.yaml. None are defined yet, and sending frames is not
-  implemented.
+  parameters; the byte layout of the frame is described in the CAN map
+  (canmap.py). None are defined yet, and sending frames is not implemented.
 
 execute() returns (ok, message) for the event log.
 """
@@ -168,5 +167,5 @@ def execute(text):
     if find_command(text) is None:
         return False, "unknown command"
 
-    # Encoding the frame by canmap.yaml and sending it comes later
+    # Encoding the frame by the CAN map and sending it comes later
     return False, "sending is not implemented yet"

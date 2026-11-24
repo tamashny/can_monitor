@@ -1,324 +1,338 @@
-import yaml
+"""Decoding and encoding of CAN frames by the signal map (canmap.py)."""
 
-# All bits set (0xFF in every byte) means "value not available"
-from parameters import NO_DATA
-from settings import CANMAP_FILE
+from canmap import FRAMES, SERVICE_SIGNALS, signal_key, signal_keys
+from parameters import MEASURE_ERROR, NO_DATA
 
-# Load CAN protocol description
-with open(CANMAP_FILE, "r", encoding="utf-8") as file:
-    canmap = yaml.safe_load(file)
-
-# CAN ID -> (device, frame description)
-FRAMES = {
-    frame["id"]: (device["device"], frame)
-    for device in canmap["map"]
-    for frame in device["frames"]
+# Text of a flag that has no names in the map: (bit is 0, bit is 1)
+FLAG_TEXT = {
+    "fault": ("OK", "ALARM"),
+    "internal_error": ("OK", "ALARM"),
+    "warn": ("OK", "WARNING"),
 }
+DEFAULT_FLAG_TEXT = ("OFF", "ON")
 
 
 def find_frame(frame_id):
     """
-    Find frame description by CAN ID.
+    Frame description by CAN ID.
     """
 
-    return FRAMES.get(frame_id, (None, None))[1]
+    return FRAMES.get(frame_id)
 
 
-def find_device(frame_id):
+# =================================================
+# FIELDS
+# =================================================
+
+def field_position(signal):
     """
-    Device that sends the frame, as named in canmap.yaml (imd, cc, bup, ...).
-    """
-
-    return FRAMES.get(frame_id, (None, None))[0]
-
-
-def is_no_data(raw_data):
-    """
-    Check whether every byte of the field is 0xFF.
+    First bit of the field in the frame and its length in bits.
     """
 
-    return len(raw_data) > 0 and all(
-        b == 0xFF for b in raw_data
-    )
+    start = signal["byte"] * 8 + signal.get("bit", 0)
+    size = signal.get("bit_length") or signal.get("byte_length", 1) * 8
+
+    return start, size
 
 
-def decode_code(data, item):
+def swap_bytes(raw, size):
+
+    length = size // 8
+
+    return int.from_bytes(raw.to_bytes(length, "little"), "big")
+
+
+def read_field(data, signal):
     """
-    Decode a code.
-    """
-
-    byte = item["byte"]
-    length = item["length"]
-
-    raw_data = data[byte:byte + length]
-
-    if is_no_data(raw_data):
-        return NO_DATA
-
-    value = int.from_bytes(
-        raw_data,
-        byteorder="little"
-    )
-
-    if "values" in item:
-        value = item["values"].get(
-            value,
-            f"UNKNOWN({value})"
-        )
-
-    return value
-
-
-def decode_metric(data, item):
-    """
-    Decode a numeric scale.
+    Raw value of the field, None when the frame is too short for it.
     """
 
-    byte = item["byte"]
-    length = item["length"]
+    start, size = field_position(signal)
 
-    raw_data = data[byte:byte + length]
+    if start + size > len(data) * 8:
+        return None
 
-    if is_no_data(raw_data):
-        return NO_DATA
+    raw = (int.from_bytes(data, "little") >> start) & ((1 << size) - 1)
 
-    if item.get("byte_order") == "big_endian":
-        value = int.from_bytes(
-            raw_data,
-            byteorder="big"
-        )
-    else:
-        value = int.from_bytes(
-            raw_data,
-            byteorder="little"
-        )
+    if signal.get("byte_order") == "big_endian":
+        raw = swap_bytes(raw, size)
 
-    # Sign-magnitude ("прямой код"): MSB is the sign
-    if item.get("encoding") == "sign_magnitude":
-
-        sign_bit = 1 << (length * 8 - 1)
-
-        if value & sign_bit:
-            value = -(value & (sign_bit - 1))
-
-    if "scale" in item:
-
-        scale = item["scale"]
-
-        if isinstance(scale, str):
-            scale = float(
-                scale.replace(",", ".")
-            )
-
-        if scale >= 1:
-            value = value / scale
-        else:
-            value = value * scale
-
-    return value
+    return raw
 
 
-def decode_bitfield(data, item):
+def invalid_codes(signal):
     """
-    Decode individual bits.
+    Raw codes that are not a measurement -> what they mean.
     """
 
-    byte = item["byte"]
-    value = data[byte]
+    invalid = signal.get("invalid_raw")
 
-    result = {}
-
-    if value == 0xFF:
-
-        for parameter in item["parameters"]:
-            result[parameter["parameter"]] = NO_DATA
-
-        return result
-
-    for parameter in item["parameters"]:
-
-        bit = parameter["bit"]
-        length = parameter.get("length", 1)
-
-        bit_value = (value >> bit) & ((1 << length) - 1)
-
-        if "values" in parameter:
-            bit_value = parameter["values"].get(
-                bit_value,
-                f"UNKNOWN({bit_value})"
-            )
-
-        result[parameter["parameter"]] = bit_value
-
-    return result
-
-
-def decode(frame):
-    """
-    Decode one CAN frame using canmap.yaml.
-
-    Returns a dictionary with decoded parameters.
-    """
-
-    frame_description = find_frame(
-        frame.arbitration_id
-    )
-
-    if frame_description is None:
+    if invalid is None:
         return {}
 
-    parameters = {}
+    if isinstance(invalid, int):
+        return {invalid: NO_DATA}
 
-    for item in frame_description["data"]:
+    return {
+        invalid["not_available"]: NO_DATA,
+        invalid["error"]: MEASURE_ERROR,
+    }
 
-        data_type = item["type"]
 
-        # The frame is shorter than its description: no data for the field
-        if item["byte"] + item["length"] > len(frame.data):
+# =================================================
+# CRC AND FRAME COUNTER
+# =================================================
 
-            if data_type == "bitfield":
-                for bit in item["parameters"]:
-                    parameters[bit["parameter"]] = NO_DATA
-            else:
-                parameters[item["parameter"]] = NO_DATA
+def crc8(frame_id, data):
+    """
+    CRC-8/SAE-J1850 over the low and high byte of the CAN ID and `data`.
+    """
 
-            continue
+    crc = 0xFF
 
-        if data_type == "code":
+    for byte in bytes((frame_id & 0xFF, frame_id >> 8)) + bytes(data):
 
-            parameter = item["parameter"]
+        crc ^= byte
 
-            parameters[parameter] = decode_code(
-                frame.data,
-                item
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x1D) & 0xFF if crc & 0x80 else (crc << 1) & 0xFF
+
+    return crc ^ 0xFF
+
+
+def crc_valid(frame, data):
+    """
+    Length and CRC of a frame; frames without a CRC field always pass.
+    """
+
+    signal = frame["crc_signal"]
+
+    if signal is None:
+        return True
+
+    if len(data) != frame.get("length"):
+        return False
+
+    return read_field(data, signal) == crc8(frame["id"], data[:signal["byte"]])
+
+
+def frame_counter(frame, data):
+    """
+    CNT of the frame, None when it has no such field.
+    """
+
+    signal = frame["cnt_signal"]
+
+    return None if signal is None else read_field(data, signal)
+
+
+# =================================================
+# DECODING
+# =================================================
+
+def decode_number(raw, signal):
+
+    _, size = field_position(signal)
+
+    representation = signal.get("representation")
+    sign_bit = 1 << (size - 1)
+
+    if representation == "twos_complement" and raw & sign_bit:
+        raw -= 1 << size
+
+    elif representation == "sign_magnitude" and raw & sign_bit:
+        raw = -(raw & (sign_bit - 1))
+
+    value = raw * signal.get("factor", 1) + signal.get("offset", 0)
+
+    # 0.1 * 3 is 0.30000000000000004
+    return round(value, 6)
+
+
+def flag_text(signal, flag, bit):
+
+    if flag["names"]:
+        return flag["names"].get(bit, f"UNKNOWN({bit})")
+
+    return FLAG_TEXT.get(signal["name"], DEFAULT_FLAG_TEXT)[bit]
+
+
+def decode_signal(frame, signal, data):
+    """
+    {key: value} of one signal.
+    """
+
+    keys = signal_keys(frame, signal)
+
+    if not keys:
+        return {}
+
+    raw = read_field(data, signal)
+
+    if raw is None:
+        return {key: NO_DATA for key in keys}
+
+    if signal.get("encoding") == "bitfield":
+
+        return {
+            signal_key(frame, signal, flag): flag_text(
+                signal, flag, (raw >> flag["bit"]) & 1
             )
+            for flag in signal.get("flags") or []
+        }
 
-        elif data_type == "metric":
+    invalid = invalid_codes(signal)
 
-            parameter = item["parameter"]
+    if raw in invalid:
+        return {keys[0]: invalid[raw]}
 
-            parameters[parameter] = decode_metric(
-                frame.data,
-                item
-            )
+    if signal.get("encoding") == "enum" and signal["names"]:
+        return {keys[0]: signal["names"].get(raw, f"UNKNOWN({raw})")}
 
-        elif data_type == "bitfield":
+    return {keys[0]: decode_number(raw, signal)}
 
-            bitfield_parameters = decode_bitfield(
-                frame.data,
-                item
-            )
 
-            parameters.update(
-                bitfield_parameters
-            )
+def decode(message):
+    """
+    Decode one CAN frame. Returns {key in PARAMETERS[device]: value}.
+    """
 
-    return parameters
+    frame = find_frame(message.arbitration_id)
+
+    if frame is None:
+        return {}
+
+    data = bytes(message.data)
+    values = {}
+
+    for signal in frame["signals"]:
+        values.update(decode_signal(frame, signal, data))
+
+    return values
 
 
 # =================================================
 # ENCODING: values -> frame data (the reverse of decode)
 # =================================================
 
-def raw_code(value, values):
+def encode_number(value, signal):
+
+    _, size = field_position(signal)
+
+    invalid = invalid_codes(signal)
+
+    # The largest codes may be reserved for "no data" and "error"
+    reserved = len(invalid)
+
+    raw = round(
+        (value - signal.get("offset", 0)) / signal.get("factor", 1)
+    )
+
+    representation = signal.get("representation")
+    limit = (1 << (size - 1)) - 1
+
+    if representation == "twos_complement":
+        raw = max(-limit - 1, min(raw, limit - reserved))
+        return raw & ((1 << size) - 1)
+
+    if representation == "sign_magnitude":
+        magnitude = min(abs(raw), limit - reserved)
+        return magnitude | ((limit + 1) if raw < 0 else 0)
+
+    return max(0, min(raw, (1 << size) - 1 - reserved))
+
+
+def encode_flags(frame, signal, values):
+
+    raw = 0
+
+    for flag in signal.get("flags") or []:
+
+        value = values.get(signal_key(frame, signal, flag), NO_DATA)
+
+        if flag["names"]:
+            on = flag["names"].get(1)
+        else:
+            on = FLAG_TEXT.get(signal["name"], DEFAULT_FLAG_TEXT)[1]
+
+        if value == on:
+            raw |= 1 << flag["bit"]
+
+    return raw
+
+
+def encode_signal(frame, signal, values):
     """
-    Name of a code ("OK") -> its number by the "values" table of canmap.yaml.
-    """
-
-    if values is None:
-        return int(value)
-
-    for number, name in values.items():
-
-        # YAML may turn names like YES into booleans: compare as text
-        if str(name).upper() == str(value).upper():
-            return number
-
-    raise ValueError(f"no code for {value!r}")
-
-
-def scale_of(item):
-
-    scale = item.get("scale", 1)
-
-    if isinstance(scale, str):
-        scale = float(scale.replace(",", "."))
-
-    return scale
-
-
-def encode_metric(value, item):
-
-    length = item["length"]
-    scale = scale_of(item)
-
-    raw = value * scale if scale >= 1 else value / scale
-    raw = round(raw)
-
-    if item.get("encoding") == "sign_magnitude":
-
-        sign_bit = 1 << (length * 8 - 1)
-        magnitude = min(abs(raw), sign_bit - 1)
-        raw = magnitude | (sign_bit if raw < 0 else 0)
-
-    # All ones means "no data": the largest real value is one less
-    raw = max(0, min(raw, (1 << (length * 8)) - 2))
-
-    order = "big" if item.get("byte_order") == "big_endian" else "little"
-
-    return raw.to_bytes(length, byteorder=order)
-
-
-def encode(frame_id, values):
-    """
-    Build the data of a frame from parameter values named as in canmap.yaml.
-    Values that are missing or NO_DATA are sent as all ones (0xFF...).
+    Raw value of the field. Without a value: the "no data" code, if the
+    signal has one, otherwise 0.
     """
 
-    frame_description = find_frame(frame_id)
+    # ERR_REG is sent as 0, CNT and CRC are filled in by encode()
+    if signal["name"] in SERVICE_SIGNALS:
+        return 0
 
-    if frame_description is None:
-        raise ValueError(f"frame 0x{frame_id:03X} is not in canmap.yaml")
+    if signal.get("encoding") == "bitfield":
+        return encode_flags(frame, signal, values)
 
-    size = max(item["byte"] + item["length"] for item in frame_description["data"])
-    data = bytearray(b"\xFF" * size)
+    value = values.get(signal_key(frame, signal), NO_DATA)
 
-    for item in frame_description["data"]:
+    if value in (NO_DATA, MEASURE_ERROR):
 
-        byte = item["byte"]
-        length = item["length"]
-        data_type = item["type"]
+        for code, meaning in invalid_codes(signal).items():
+            if meaning == value:
+                return code
 
-        if data_type == "bitfield":
+        return 0
 
-            bits = item["parameters"]
+    if signal.get("encoding") == "enum" and signal["names"]:
 
-            if all(values.get(bit["parameter"], NO_DATA) == NO_DATA for bit in bits):
-                continue
+        for number, name in signal["names"].items():
+            if name == value:
+                return number
 
-            field = 0
+        raise ValueError(f'no code for {value!r} in {signal["name"]}')
 
-            for bit in bits:
+    return encode_number(value, signal)
 
-                value = values.get(bit["parameter"], NO_DATA)
 
-                if value != NO_DATA:
-                    field |= raw_code(value, bit.get("values")) << bit["bit"]
+def encode(frame_id, values, cnt=0):
+    """
+    Build the data of a frame from values named as in PARAMETERS[device],
+    with the frame counter `cnt` and the CRC when the frame has them.
+    """
 
-            data[byte] = field
+    frame = find_frame(frame_id)
 
-            continue
+    if frame is None:
+        raise ValueError(f"frame 0x{frame_id:03X} is not in the CAN map")
 
-        value = values.get(item["parameter"], NO_DATA)
+    length = frame.get("length") or max(
+        (field_position(signal)[0] + field_position(signal)[1] + 7) // 8
+        for signal in frame["signals"]
+    )
 
-        if value == NO_DATA:
-            continue
+    data = 0
 
-        if data_type == "code":
-            raw = raw_code(value, item.get("values"))
-            data[byte:byte + length] = raw.to_bytes(length, byteorder="little")
+    for signal in frame["signals"]:
 
-        elif data_type == "metric":
-            data[byte:byte + length] = encode_metric(value, item)
+        start, size = field_position(signal)
+        raw = encode_signal(frame, signal, values)
 
-    return bytes(data)
+        if signal.get("byte_order") == "big_endian":
+            raw = swap_bytes(raw, size)
+
+        data |= (raw & ((1 << size) - 1)) << start
+
+    if frame["cnt_signal"] is not None:
+
+        start, size = field_position(frame["cnt_signal"])
+        data |= (cnt & ((1 << size) - 1)) << start
+
+    result = bytearray(data.to_bytes(length, "little"))
+
+    if frame["crc_signal"] is not None:
+
+        byte = frame["crc_signal"]["byte"]
+        result[byte] = crc8(frame_id, result[:byte])
+
+    return bytes(result)
