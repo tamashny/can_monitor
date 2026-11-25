@@ -46,7 +46,6 @@ link_timeouts:               # timeout_ms of the status frame in the CAN map
   bune: 300                 # БУНЭ, heartbeat every 100 ms on bus 1 (its status is on bus 2)
   puer: 300                 # ПУЭР, every 100 ms
   imd: 300                  # СКИ, every 100 ms
-  bem: 300                  # БВИ, every 100 ms
   bup: 150                  # БУП, every 50 ms
   cc: 150                   # КК, every 50 ms
   bust_a: 300               # БУСТ-А, every 100 ms

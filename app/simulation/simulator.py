@@ -64,7 +64,7 @@ FAULTS = ("insulation", "overvoltage", "sensor", "free_sensors", "reserve_bus")
 FREE_SENSORS = 3
 
 # Devices with a heartbeat frame (СКИ has none)
-HEARTBEAT_DEVICES = ("bune", "puer", "bem", "bup", "cc", "bust_a", "bust_b", "plod")
+HEARTBEAT_DEVICES = ("bune", "puer", "bup", "cc", "bust_a", "bust_b", "plod")
 
 
 def noise(span):
@@ -84,7 +84,8 @@ class Simulator:
         self.soc = 55.0
         self.temperature = 24.0
         self.current = 0.0
-        self.charge = 0.0
+        self.storage_voltage = STORAGE_VOLTAGE_MIN
+        self.storage_current = 0.0
 
         # Groups differ a little, one is weaker, one sensor sits on a hot spot
         self.cell_offsets = [noise(0.1) for _ in range(CELL_VOLTAGE_COUNT)]
@@ -137,7 +138,6 @@ class Simulator:
         self.p["imd"].update({"cmd.allow_work": "ALLOW", "cmd.force_selftest": "AUTO"})
         self.p["plod"].update(state="RUN", mode="LOGGING")
         self.p["cc"].update(state="RUN", mode=0)
-        self.p["bem"].update(state="RUN", mode=0)
         self.p["puer"]["state"] = "RUN"
         self.p["bust_a"]["state"] = "RUN"
         self.p["bust_b"]["state"] = "RUN"
@@ -224,7 +224,6 @@ class Simulator:
 
         if target:
             self.soc = min(100.0, max(0.0, self.soc + delta))
-            self.charge += current * TICK / 3600
 
         self.p["bune"].update(
             state=system,
@@ -232,20 +231,15 @@ class Simulator:
             soc=round(self.soc),
         )
 
-        self.p["bem"].update(
-            i=round(current, 3),
-            u=round(voltage + noise(2), 1),
-            q=round(self.charge, 3),
-            t=round(self.temperature),
-        )
+        self.storage_current = round(current, 3)
+        self.storage_voltage = round(voltage + noise(2), 1)
 
     def step_converter(self, state, mode, requested):
 
         bup = self.p["bup"]
-        bem = self.p["bem"]
 
-        storage_voltage = bem["u"]
-        storage_current = bem["i"]
+        storage_voltage = self.storage_voltage
+        storage_current = self.storage_current
         line_voltage = LINE_VOLTAGE + noise(12)
 
         # Bus side current from the power balance, 97% efficiency.
@@ -336,7 +330,7 @@ class Simulator:
 
         cc = self.p["cc"]
 
-        group_voltage = self.p["bem"]["u"] / CELL_VOLTAGE_COUNT
+        group_voltage = self.storage_voltage / CELL_VOLTAGE_COUNT
 
         cc["cell_voltages"][:] = [
             round(group_voltage + offset + noise(0.02), 3)

@@ -28,7 +28,7 @@ NO_DATA = "No data"
 MEASURE_ERROR = "Error"
 
 # Devices of the "systems" table, by their keys in the map
-DEVICE_KEYS = ("bune", "puer", "imd", "bem", "bup", "cc", "bust_a", "bust_b", "plod")
+DEVICE_KEYS = ("bune", "puer", "imd", "bup", "cc", "bust_a", "bust_b", "plod")
 
 
 def device_values(key):

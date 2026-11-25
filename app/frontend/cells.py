@@ -576,7 +576,6 @@ def render_soc(parameters, box):
 
     charge_limit = render_kv('Ток заряда макс')
     discharge_limit = render_kv('Ток разряда макс')
-    charge = render_kv('Заряд')
 
     def update():
 
@@ -585,17 +584,8 @@ def render_soc(parameters, box):
 
         charge_limit.set(fmt(bune["i_chg_max"], ' А'))
         discharge_limit.set(fmt(bune["i_dch_max"], ' А'))
-        charge.set(fmt(parameters["bem"]["q"], ' А·ч', '.1f'))
 
     live(box, update)
-
-
-def first_number(*values):
-    """
-    The first real measurement: the same value can come from two devices.
-    """
-
-    return next((value for value in values if is_number(value)), NO_DATA)
 
 
 def storage_temperatures(cc):
@@ -613,7 +603,6 @@ def storage_temperatures(cc):
 def render_v_i_t(parameters, box):
 
     bup = parameters["bup"]
-    bem = parameters["bem"]
     cc = parameters["cc"]
 
     voltage = render_metric(
@@ -631,8 +620,8 @@ def render_v_i_t(parameters, box):
 
     def update():
 
-        voltage(first_number(bup["u_ess"], bem["u"]))
-        current(first_number(bem["i"], bup["i_ess"]))
+        voltage(bup["u_ess"])
+        current(bup["i_ess"])
 
         numbers = storage_temperatures(cc)
 
