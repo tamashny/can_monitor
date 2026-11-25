@@ -109,9 +109,9 @@ class Simulator:
 
         self.p["bus"].update(
             bitrate=CAN_BITRATE,
-            port="simulation",
+            port="имитация",
             state="SIMULATION",
-            reserve_port="simulation",
+            reserve_port="имитация",
             reserve_state="SIMULATION",
         )
 

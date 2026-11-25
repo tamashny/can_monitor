@@ -35,6 +35,10 @@ _next_seq = itertools.count(1)
 
 # Names of the PARAMETERS sections in the log
 SOURCES = {key: name for key, name, *_ in DEVICES}
+SOURCES["bus"] = "адаптер"
+
+# Width of the source column: the longest name, the gap is added on display
+SOURCE_WIDTH = max(len(name) for name in [*SOURCES.values(), "система", "команда"])
 
 
 def log_event(source, parts):
@@ -54,7 +58,7 @@ def log_command(command, result, ok):
     Typed command and what happened with it (canbus/commands.py).
     """
 
-    log_event('cmd', [
+    log_event('команда', [
         (command, 'v', HI),
         ('  ', ''),
         (result, 'v', None if ok else RED),
@@ -80,15 +84,15 @@ def log_emcy(device, values):
     color = DIM if not appeared else YELLOW if warning else RED
 
     parts = [
-        ('emcy ', 'k'),
+        ('EMCY ', 'k'),
         (name, 'v', color),
-        (' up' if appeared else ' down', 'dim'),
+        (' возникло' if appeared else ' снято', 'dim'),
     ]
 
     number = values.get("object")
 
     if is_number(number) and number:
-        parts.append((f' object {number:g}', 'dim'))
+        parts.append((f' объект {number:g}', 'dim'))
 
     log_event(SOURCES.get(device, device), parts)
 
@@ -142,6 +146,6 @@ def start_event_watcher(parameters):
 
         previous = current
 
-    log_event('system', [('dashboard started', 'dim', DIM)])
+    log_event('система', [('панель запущена', 'dim', DIM)])
 
     app.timer(EVENT_WATCH_INTERVAL, check)

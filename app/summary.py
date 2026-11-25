@@ -21,8 +21,8 @@ CONNECTED_STATES = ("CONNECTED", "SIMULATION")
 
 # (link of a device, state of the bus adapter, name of the bus)
 BUS_LINKS = (
-    ("link_main", "state", "no link on CAN1"),
-    ("link_reserve", "reserve_state", "no link on CAN2"),
+    ("link_main", "state", "нет связи по CAN1"),
+    ("link_reserve", "reserve_state", "нет связи по CAN2"),
 )
 
 IMD_ERRORS = (
@@ -42,7 +42,7 @@ def active_flags(device, signal, active):
     value = device.get(signal)
 
     if isinstance(value, int):
-        return [f"bit {bit}" for bit in range(value.bit_length()) if value >> bit & 1]
+        return [f"бит {bit}" for bit in range(value.bit_length()) if value >> bit & 1]
 
     prefix = f"{signal}."
 

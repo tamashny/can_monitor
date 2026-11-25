@@ -76,7 +76,7 @@ def ports_command(arguments):
     ports = serial_ports()
 
     if not ports:
-        return False, "no serial ports found"
+        return False, "COM-порты не найдены"
 
     return True, "  ".join(f"{device} ({description})" for device, description in ports)
 
@@ -84,10 +84,10 @@ def ports_command(arguments):
 def connect_command(arguments):
 
     if reader.READER is None:
-        return False, "no adapter in --debug mode"
+        return False, "в режиме --debug адаптера нет"
 
     if not arguments:
-        return False, "usage: /connect <port> [bitrate]"
+        return False, "формат: /connect <порт> [скорость]"
 
     port = arguments[0]
     bitrate = reader.READER.bitrate
@@ -98,21 +98,21 @@ def connect_command(arguments):
 
         if bitrate not in reader.SLCAN_BITRATES:
             rates = ", ".join(str(rate) for rate in reader.SLCAN_BITRATES)
-            return False, f"bitrate must be one of: {rates}"
+            return False, f"скорость должна быть одной из: {rates}"
 
     reader.READER.connect(port, bitrate)
 
-    return True, f"connecting to {port} at {bitrate // 1000} kbit/s"
+    return True, f"подключение к {port}, {bitrate // 1000} кбит/с"
 
 
 def disconnect_command(arguments):
 
     if reader.READER is None:
-        return False, "no adapter in --debug mode"
+        return False, "в режиме --debug адаптера нет"
 
     reader.READER.disconnect()
 
-    return True, "adapter disconnected"
+    return True, "адаптеры отключены"
 
 
 BUILTIN_COMMANDS = {
@@ -165,7 +165,7 @@ def execute(text):
         return builtin(arguments)
 
     if find_command(text) is None:
-        return False, "unknown command"
+        return False, "неизвестная команда"
 
     # Encoding the frame by the CAN map and sending it comes later
-    return False, "sending is not implemented yet"
+    return False, "отправка кадров пока не реализована"

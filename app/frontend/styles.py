@@ -186,6 +186,36 @@ BOX_CSS = '''
     min-height: 100%;
 }
 
+/* Cooling: БУСТ-А fans on 2/3 of the width, БУСТ-Б on 1/3 behind a line */
+.cooling {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    column-gap: 2ch;
+}
+
+/* Groups from the left wall of the part, with a fixed gap */
+.cooling-part {
+    display: flex;
+    justify-content: flex-start;
+    gap: 3ch;
+
+    min-width: 0;
+    white-space: nowrap;
+}
+
+/* Two lines filled column by column: the names, then the values */
+.cooling-group {
+    display: grid;
+    grid-template-rows: auto auto;
+    grid-auto-flow: column;
+    column-gap: 1ch;
+}
+
+.cooling-side {
+    padding-left: 2ch;
+    border-left: 1px solid var(--div-line);
+}
+
 /* Header row stays on top while the rows scroll */
 .sticky-head .th {
     position: sticky;

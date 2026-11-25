@@ -41,51 +41,51 @@ cells:
 
   B:
     widget: ec_status
-    title: "ec"
+    title: "накопитель"
     color: cpu
 
   C:
     widget: systems_states
-    title: "systems"
+    title: "системы"
     color: proc
 
   D:
     widget: soc
-    title: "storage"
+    title: "емкость"
     color: mem
 
   E:
     widget: v_i_t
-    title: "vit"
+    title: "параметры"
     color: mem
 
   F:
     widget: converter
-    title: "converter"
+    title: "преобразователь"
     color: net
 
   G:
     widget: contactors
-    title: "contactors"
+    title: "размыкатели"
     color: cpu
 
   K:
     widget: isolation
-    title: "isolation"
+    title: "система изоляции"
     color: cpu
 
   H:
     widget: cooling
-    title: "cooling"
+    title: "система охлаждения"
     color: cpu
 
   I:
     widget: cells_map
-    title: "cells"
+    title: "ячейки"
     color: proc
 
   J:
     widget: event_log
-    title: "log"
+    title: "логи"
     color: gray
     number: 0

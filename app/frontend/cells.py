@@ -5,8 +5,8 @@ from types import SimpleNamespace
 from nicegui import ui
 
 from canbus.commands import execute
-from canmap import temperature_grid, temperature_sensor
-from parameters import DEVICES, NO_DATA
+from canmap import temperature_sensor
+from parameters import DEVICES, MEASURE_ERROR, NO_DATA
 from settings import (
     CELL_TEMPERATURE_COLUMNS,
     CELL_VOLTAGE_COLUMNS,
@@ -43,7 +43,7 @@ from .colors import (
     voltage_color,
 )
 from .command_line import build_command_line
-from .events import EVENTS, log_command
+from .events import EVENTS, SOURCE_WIDTH, log_command
 from .helpers import (
     cells_summary,
     fmt,
@@ -54,6 +54,9 @@ from .helpers import (
 )
 
 SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+
+# Special values of the parameters as they are shown in tooltips
+VALUE_TEXT = {NO_DATA: 'нет данных', MEASURE_ERROR: 'ошибка измерения'}
 
 
 # =================================================
@@ -109,7 +112,7 @@ def render_box(area, cell, number, parameters, updates, debug=False):
         renderer = CELL_RENDERERS.get(widget)
 
         if renderer is None:
-            ui.label(f'unknown widget: {widget}').classes('dim')
+            ui.label(f'неизвестный виджет: {widget}').classes('dim')
             return
 
         renderer(parameters, box)
@@ -209,19 +212,24 @@ def render_kv(key):
         return Value(ui.label().classes('v'))
 
 
-def render_pairs(keys):
+def render_pairs(keys, hints=None):
     """
     One line of "key value" pairs spread across the width.
+    hints: optional tooltip per key.
     """
 
     values = []
 
     with ui.element('div').classes('kv'):
 
-        for key in keys:
+        for key, hint in zip(keys, hints or [None] * len(keys)):
 
             with ui.element('div'):
-                ui.label(key).classes('k inline')
+
+                with ui.label(key).classes('k inline'):
+                    if hint:
+                        ui.tooltip(hint)
+
                 ui.label(' ').classes('inline whitespace-pre')
                 values.append(Value(ui.label().classes('v inline')))
 
@@ -262,8 +270,17 @@ BUS_STATE_COLORS = {
 }
 
 BUS_STATE_TEXT = {
-    "DISCONNECTED": "offline",
-    "SIMULATION": "simulation",
+    "CONNECTED": "подключен",
+    "DISCONNECTED": "отключен",
+    "SIMULATION": "имитация",
+}
+
+# Overall states of a device or of the whole storage
+HEALTH_NAMES = {
+    "OK": "норма",
+    "WARNING": "предупреждение",
+    "ALARM": "авария",
+    "NONE": "нет связи",
 }
 
 
@@ -271,8 +288,8 @@ def render_can_status(parameters, box):
 
     bus = parameters["bus"]
 
-    ports = render_kv('Ports')
-    bitrate = render_kv('Bitrate')
+    ports = render_kv('Порты')
+    bitrate = render_kv('Скорость')
     main = render_kv('CAN1')
     reserve = render_kv('CAN2')
 
@@ -282,7 +299,7 @@ def render_can_status(parameters, box):
         """
 
         if state == "CONNECTED" and is_number(fps):
-            return f'● {fps} fr/s'
+            return f'● подключен, {fps} кадр/с'
 
         return f'● {BUS_STATE_TEXT.get(state, text(state))}'
 
@@ -294,7 +311,7 @@ def render_can_status(parameters, box):
             ports.set(f'{bus["port"]} / {bus["reserve_port"]}')
 
         rate = bus["bitrate"]
-        bitrate.set(fmt(rate / 1000, ' kbit/s') if is_number(rate) else '—')
+        bitrate.set(fmt(rate / 1000, ' кбит/с') if is_number(rate) else '—')
 
         main.set(
             bus_text(bus["state"], bus["frames_per_second"]),
@@ -329,14 +346,14 @@ def render_ec_status(parameters, box):
 
     bune = parameters["bune"]
 
-    state = render_kv('State')
-    system = render_kv('System')
-    warnings = render_kv('Warnings')
-    errors = render_kv('Errors')
+    state = render_kv('Статус')
+    system = render_kv('Система')
+    warnings = render_kv('Предупреждения')
+    errors = render_kv('Ошибки')
 
     def update():
 
-        state.set(f'● {bune["overall"]}', state_color(bune["overall"]))
+        state.set(f'● {HEALTH_NAMES.get(bune["overall"], bune["overall"])}', state_color(bune["overall"]))
         system.set(pretty(bune["state"]))
         warnings.set(*count(bune["total_warnings"], YELLOW))
         errors.set(*count(bune["total_errors"], RED))
@@ -353,18 +370,18 @@ def setpoint_text(bup):
     unit = ''
 
     if isinstance(mode, str) and mode.endswith("_SET_V"):
-        unit = 'V'
+        unit = 'В'
     elif isinstance(mode, str) and mode.endswith("_SET_I"):
-        unit = 'A'
+        unit = 'А'
 
     return fmt(bup["cmd.set"], unit)
 
 
 # Flags of status_bup shown as words: bright when set
 BUP_FLAGS = {
-    "flags.pulses_enabled": "pulses",
-    "flags.dc_link_charged": "link",
-    "flags.voltages_in_window": "window",
+    "flags.pulses_enabled": "пульсы",
+    "flags.dc_link_charged": "связь",
+    "flags.voltages_in_window": "окно",
 }
 
 
@@ -372,14 +389,14 @@ def render_converter(parameters, box):
 
     bup = parameters["bup"]
 
-    state = render_kv('State')
-    mode = render_kv('Mode')
-    requested = render_kv('Req')
-    setpoint = render_kv('Set')
+    state = render_kv('Статус')
+    mode = render_kv('Режим')
+    requested = render_kv('Уставка')
+    setpoint = render_kv('Цель')
 
     # One line per side of the converter: voltage, current
-    # Bus 780V  -870A
-    # ESS 900V  -780A
+    # Сеть 780В  -870А
+    # НЭ   900В  -780А
     flow = {}
 
     with ui.element('div').classes('table').style(
@@ -387,8 +404,8 @@ def render_converter(parameters, box):
     ):
 
         for side, voltage, current in (
-            ('Bus', "u_dc", "i_dc"),
-            ('ESS', "u_ess", "i_ess"),
+            ('Сеть', "u_dc", "i_dc"),
+            ('НЭ', "u_ess", "i_ess"),
         ):
 
             ui.label(side).classes('k')
@@ -410,7 +427,7 @@ def render_converter(parameters, box):
         setpoint.set(setpoint_text(bup))
 
         for key, value in flow.items():
-            value.set(fmt(bup[key], 'A' if key.startswith('i') else 'V'))
+            value.set(fmt(bup[key], 'А' if key.startswith('i') else 'В'))
 
         for key, (name, label) in flags.items():
             label.set(name, GREEN if bup[key] == "ON" else DIM)
@@ -419,7 +436,7 @@ def render_converter(parameters, box):
 
 
 # Short texts of the "systems" table, so that it fits a narrow box
-HEALTH_TEXT = {"WARNING": "WARN"}
+HEALTH_TEXT = {"OK": "норма", "WARNING": "предупр", "ALARM": "авария", "NONE": "нет"}
 
 NMT_TEXT = {
     "OPERATIONAL": "OP",
@@ -434,7 +451,7 @@ def set_tip(tooltip, names):
     Tooltip with a list of names, redrawn only when it changes.
     """
 
-    content = ', '.join(names) or 'none'
+    content = ', '.join(names) or 'нет'
 
     if tooltip.text != content:
         tooltip.set_text(content)
@@ -456,13 +473,13 @@ def render_systems_states(parameters, box):
             with ui.element('div').classes('table sticky-head systems-table'):
 
                 for header, hint in (
-                    ('State', None),
-                    ('Dev', None),
+                    ('Статус', None),
+                    ('Устр', None),
                     ('ID', None),
-                    ('Err', None),
-                    ('Wrn', None),
+                    ('Ав', 'аварии'),
+                    ('Пр', 'предупреждения'),
                     ('NMT', None),
-                    ('Link', 'ms between the last two contacts of the device, on any bus'),
+                    ('Связь', 'мс между двумя последними выходами устройства на связь, по любой шине'),
                 ):
 
                     with ui.label(header).classes('th'):
@@ -557,18 +574,18 @@ def render_soc(parameters, box):
     soc = render_metric('SoC', '%', SOC_MIN, SOC_MAX, soc_color, minimum_segments=1)
     soh = render_metric('SoH', '%', SOH_MIN, SOH_MAX, soh_color, minimum_segments=1)
 
-    charge_limit = render_kv('Chg limit')
-    discharge_limit = render_kv('Dch limit')
-    charge = render_kv('Charge')
+    charge_limit = render_kv('Ток заряда макс')
+    discharge_limit = render_kv('Ток разряда макс')
+    charge = render_kv('Заряд')
 
     def update():
 
         soc(bune["soc"])
         soh(bune["soh"])
 
-        charge_limit.set(fmt(bune["i_chg_max"], ' A'))
-        discharge_limit.set(fmt(bune["i_dch_max"], ' A'))
-        charge.set(fmt(parameters["bem"]["q"], ' Ah', '.1f'))
+        charge_limit.set(fmt(bune["i_chg_max"], ' А'))
+        discharge_limit.set(fmt(bune["i_dch_max"], ' А'))
+        charge.set(fmt(parameters["bem"]["q"], ' А·ч', '.1f'))
 
     live(box, update)
 
@@ -600,17 +617,17 @@ def render_v_i_t(parameters, box):
     cc = parameters["cc"]
 
     voltage = render_metric(
-        'Voltage', 'V', VOLTAGE_MIN, VOLTAGE_MAX, voltage_color, minimum_segments=1,
+        'Напряжение', 'В', VOLTAGE_MIN, VOLTAGE_MAX, voltage_color, minimum_segments=1,
     )
     # + charge, - discharge; the meter shows the magnitude
     current = render_metric(
-        'Current', 'A', CURRENT_MIN, CURRENT_MAX,
+        'Ток', 'А', CURRENT_MIN, CURRENT_MAX,
         lambda value: current_color(abs(value)), magnitude=True,
     )
     temperature = render_metric(
-        'Temp avg', 'C', TEMPERATURE_MIN, TEMPERATURE_MAX, temperature_color, minimum_segments=1,
+        'Т средняя', '°C', TEMPERATURE_MIN, TEMPERATURE_MAX, temperature_color, minimum_segments=1,
     )
-    temperature_min, temperature_max = render_pairs(['min', 'max'])
+    temperature_min, temperature_max = render_pairs(['мин', 'макс'])
 
     def update():
 
@@ -624,11 +641,14 @@ def render_v_i_t(parameters, box):
         for label, pick in ((temperature_min, min), (temperature_max, max)):
 
             if numbers:
-                label.set(fmt(pick(numbers), 'C'), temperature_color(pick(numbers)))
+                label.set(fmt(pick(numbers), '°C'), temperature_color(pick(numbers)))
             else:
                 label.set('—')
 
     live(box, update)
+
+
+CONTACTOR_TEXT = {"OPEN": "открыт", "CLOSE": "закрыт"}
 
 
 def render_contactors(parameters, box):
@@ -639,17 +659,17 @@ def render_contactors(parameters, box):
     # К1 is switched by БУНЭ itself (output DO1), its command is not on CAN
     # (document 02), so there is nothing to show until the map gets a signal.
     # The k1 bit of command_puer is not used: ПУЭР switches only К2.
-    k1 = render_kv('K1 cmd')
-    k2 = render_kv('K2 cmd')
+    k1 = render_kv('К1 уст.')
+    k2 = render_kv('К2 уст.')
 
     k1.set('—', DIM)
 
     with k1.label:
-        ui.tooltip('БУНЭ switches K1 directly, the command is not sent over CAN')
+        ui.tooltip('К1 коммутирует БУНЭ напрямую, его команды в CAN нет')
 
     def update():
 
-        k2.set(text(puer["cmd.req_mode.k2"]))
+        k2.set(CONTACTOR_TEXT.get(puer["cmd.req_mode.k2"], text(puer["cmd.req_mode.k2"])))
 
     live(box, update)
 
@@ -659,7 +679,7 @@ def render_isolation(parameters, box):
     imd = parameters["imd"]
 
     plus, minus = render_pairs(['R+', 'R-'])
-    voltage = render_kv('Utrain')
+    voltage = render_kv('U поезда')
 
     def update():
 
@@ -667,9 +687,9 @@ def render_isolation(parameters, box):
         resistance_ready = imd["resistance_calculated"] == "CALCULATED"
         voltage_ready = imd["bus_voltage_calculated"] == "CALCULATED"
 
-        plus.set(fmt(imd["resistance_plus"], ' kOhm') if resistance_ready else '—')
-        minus.set(fmt(imd["resistance_minus"], ' kOhm') if resistance_ready else '—')
-        voltage.set(fmt(imd["bus_voltage"], 'V') if voltage_ready else '—')
+        plus.set(fmt(imd["resistance_plus"], ' кОм') if resistance_ready else '—')
+        minus.set(fmt(imd["resistance_minus"], ' кОм') if resistance_ready else '—')
+        voltage.set(fmt(imd["bus_voltage"], 'В') if voltage_ready else '—')
 
     live(box, update)
 
@@ -686,12 +706,12 @@ def damper_text(bust_b):
         return '—'
 
     if opened == "ON" and closed == "ON":
-        return 'error'
+        return 'ошибка'
 
     if opened == "ON":
-        return 'open'
+        return 'открыт'
 
-    return 'closed' if closed == "ON" else 'moving'
+    return 'закрыт' if closed == "ON" else 'движение'
 
 
 def render_cooling(parameters, box):
@@ -699,65 +719,134 @@ def render_cooling(parameters, box):
     bust_a = parameters["bust_a"]
     bust_b = parameters["bust_b"]
 
-    # БУСТ-А: six fans with one power command and a feedback per fan.
-    # БУСТ-Б: the shutter and the fan of the converter
-    fans = render_pairs([f'F{i}' for i in range(1, 7)])
+    # Two parts side by side, two lines each. The setpoint comes first,
+    # its name over its value, then the feedbacks as "name value":
+    #   2/3 БУСТ-А:  Уст 1  Вент 1 x  Вент 3 x  Вент 5 x
+    #                x      Вент 2 x  Вент 4 x  Вент 6 x
+    #   1/3 БУСТ-Б:  Уст 2  Вент ППН x
+    #                x      Шибер    x
+    def setpoint(name, hint):
+        """
+        Name over the value.
+        """
 
-    fan_set, conv_fan, shutter = render_pairs(['Fset', 'Fconv', 'Shutter'])
+        with ui.element('div').classes('cooling-group'):
+
+            with ui.label(name).classes('k'):
+                ui.tooltip(hint)
+
+            return Value(ui.label().classes('v'))
+
+    def feedbacks(pairs):
+        """
+        Two "name value" lines with the names and the values aligned.
+        """
+
+        with ui.element('div').classes('cooling-group'):
+
+            for name, hint in pairs:
+                with ui.label(name).classes('k'):
+                    if hint:
+                        ui.tooltip(hint)
+
+            return [Value(ui.label().classes('v')) for _ in pairs]
+
+    with ui.element('div').classes('cooling'):
+
+        with ui.element('div').classes('cooling-part'):
+
+            fan_set = setpoint('Уст 1', 'уставка вентиляторов 1–6 (БУСТ-А)')
+
+            fans = []
+
+            for first in (1, 3, 5):
+                fans += feedbacks([(f'Вент {first}', None), (f'Вент {first + 1}', None)])
+
+        with ui.element('div').classes('cooling-part cooling-side'):
+
+            conv_fan_set = setpoint('Уст 2', 'уставка вентилятора преобразователя (БУСТ-Б)')
+
+            conv_fan, shutter = feedbacks([
+                ('Вент ППН', 'обратная связь вентилятора преобразователя (БУСТ-Б)'),
+                ('Шибер', 'положение шибера по концевикам (БУСТ-Б)'),
+            ])
 
     def update():
+
+        fan_set.set(fmt(bust_a["cmd.fan_set"], '%'))
+        conv_fan_set.set(fmt(bust_b["cmd.conv_fan_set"], '%'))
+        shutter.set(damper_text(bust_b))
 
         for i, fan in enumerate(fans, start=1):
             fan.set(fmt(bust_a[f"fan_{i}_fb"], '%'))
 
-        fan_set.set(fmt(bust_a["cmd.fan_set"], '%'))
         conv_fan.set(fmt(bust_b["conv_fan_fb"], '%'))
-        shutter.set(damper_text(bust_b))
 
     live(box, update)
 
 
 # mode: (border label, parameters key, columns, unit, color function)
 CELLS_MAP_MODES = {
-    "voltage": ("voltage", "cell_voltages", CELL_VOLTAGE_COLUMNS, "V", cell_voltage_color),
-    "temperature": ("temp", "cell_temperatures", CELL_TEMPERATURE_COLUMNS, "C", cell_temperature_color),
-    "free": ("free", "free_temperatures", CELL_TEMPERATURE_COLUMNS, "C", cell_temperature_color),
+    "voltage": ("напряжение", "cell_voltages", CELL_VOLTAGE_COLUMNS, "В", cell_voltage_color),
+    "temperature": ("температура", "cell_temperatures", CELL_TEMPERATURE_COLUMNS, "°C", cell_temperature_color),
 }
 
-# Tab of the free sensors: the full name, or a short one in a narrow window
-FREE_TAB = (
-    ('free temp sensors', 'title tab-full'),
-    ('free', 'title tab-short'),
-)
 
-
-def tile_names(mode, place):
+def temperature_tiles(cc):
     """
-    Text on a tile and its name in the tooltip. Temperature sensors are
-    numbered in the map as 1-Wire bus and sensor on it.
+    All temperature sensors on the 1-Wire buses that send data, without a
+    layout by address: [(id, tooltip name, value), ...]. The bound sensors
+    first, in the order of their addresses, then the unbound ones.
     """
 
-    if mode == "temperature":
+    tiles = []
+
+    for place, value in enumerate(cc["cell_temperatures"]):
+
+        if value == NO_DATA:
+            continue
+
         bus, sensor = temperature_sensor(place)
-        return f'{bus}.{sensor}', f'Bus {bus} sensor {sensor}'
+        tiles.append((('bound', place), f'Адрес {bus}.{sensor}', value))
 
-    return str(place), f'Group {place}'
+    free = sorted(list(cc["free_temperatures"].items()), key=lambda item: item[0])
+
+    for place, (bus, value) in free:
+
+        name = f'Не привязан, шина {bus}' if bus else 'Не привязан'
+        tiles.append((('free', place), name, value))
+
+    return tiles
 
 
-def cells_map_summary(mode, values, free=()):
+def tile_text(mode, place, value):
+    """
+    Text on a tile: the group number for voltages, the value for temperatures.
+    """
+
+    if mode == "voltage":
+        return str(place)
+
+    if is_number(value):
+        return f'{value:.1f}'
+
+    return 'ош' if value == MEASURE_ERROR else '—'
+
+
+def cells_map_summary(mode, values, sensors=None):
     """
     Border labels with the key figures: [(text, css, colour), ...] per label.
-    Max and min also count the free sensors, "no data" only the known places.
+    For voltages the last label counts the groups without data, for
+    temperatures it counts the sensors on the buses.
     """
 
     _, _, _, unit, color = CELLS_MAP_MODES[mode]
 
-    _, _, no_data = cells_summary(values)
-    maximum, minimum, _ = cells_summary(list(values) + list(free))
+    maximum, minimum, no_data = cells_summary(values)
 
     # Full names, or arrows in a narrow window
-    max_key = [('max ', 'k tab-full'), ('↑', 'k tab-short')]
-    min_key = [('min ', 'k tab-full'), ('↓', 'k tab-short')]
+    max_key = [('макс ', 'k tab-full'), ('↑', 'k tab-short')]
+    min_key = [('мин ', 'k tab-full'), ('↓', 'k tab-short')]
 
     if maximum is None:
         labels = [
@@ -770,11 +859,18 @@ def cells_map_summary(mode, values, free=()):
             max_key + [(f'{maximum:.2f}{unit}', 'v', color(maximum))],
         ]
 
-    labels.append([
-        ('no data ', 'k tab-full'),
-        ('n/d ', 'k tab-short'),
-        (no_data, 'v'),
-    ])
+    if sensors is None:
+        labels.append([
+            ('нет данных ', 'k tab-full'),
+            ('н/д ', 'k tab-short'),
+            (no_data, 'v'),
+        ])
+    else:
+        labels.append([
+            ('датчиков ', 'k tab-full'),
+            ('дт ', 'k tab-short'),
+            (sensors, 'v'),
+        ])
 
     return labels
 
@@ -789,9 +885,7 @@ def render_cells_map(parameters, box):
 
         for mode, (label, *_) in CELLS_MAP_MODES.items():
 
-            parts = FREE_TAB if mode == "free" else ((label, 'title'),)
-
-            tabs[mode] = border_tab(*parts).classes('clickable').on(
+            tabs[mode] = border_tab((label, 'title')).classes('clickable').on(
                 'click', lambda e, mode=mode: show(mode)
             )
 
@@ -800,47 +894,49 @@ def render_cells_map(parameters, box):
 
     grid = ui.element('div').classes('cells-map-grid')
 
-    # What is on screen now
-    view = SimpleNamespace(mode=None, tiles=[], summary=None, free_shown=None)
+    # What is on screen now: tiles and, for temperatures, the ids of the
+    # sensors they show
+    view = SimpleNamespace(mode=None, tiles=[], summary=None, sensors_shown=None)
 
-    def new_tile(label):
+    def new_tile():
 
-        with ui.label(label).classes('cells-map-cell') as tile:
+        with ui.label().classes('cells-map-cell') as tile:
             tooltip = ui.tooltip()
 
         # tile, tooltip, what they show now
         return [tile, tooltip, None]
 
-    def paint(entry, name, value, unit, color):
+    def paint(entry, text, name, value, unit, color):
 
         if is_number(value):
-            shown = (color(value), 'lit', f'{name}: {value:g}{unit}')
+            shown = (text, color(value), 'lit', f'{name}: {value:g}{unit}')
         else:
-            shown = (NO_DATA_COLOR, 'off', f'{name}: {value}')
+            shown = (text, NO_DATA_COLOR, 'off', f'{name}: {VALUE_TEXT.get(value, value)}')
 
         if shown == entry[2]:
             return
 
         tile, tooltip, _ = entry
-        background, lit, tooltip_text = shown
+        tile_label, background, lit, tooltip_text = shown
 
+        tile.set_text(tile_label)
         tile.style(f'background: {background};')
         tile.classes(add=lit, remove='off' if lit == 'lit' else 'lit')
         tooltip.set_text(tooltip_text)
 
         entry[2] = shown
 
+    def set_grid(columns, count):
+
+        rows = max(1, math.ceil(count / columns))
+        grid.style(f'--cols: {columns}; --rows: {rows};')
+
     def show(mode):
         """
-        Build the tiles of a mode; their colours come from update().
+        Build the tiles of a mode; their texts and colours come from update().
         """
 
         _, key, columns, _, _ = CELLS_MAP_MODES[mode]
-
-        # Free sensors use the grid of the known ones, so the tiles are the
-        # same size. There are never more of them than places in that grid
-        size_key = "cell_temperatures" if mode == "free" else key
-        rows = math.ceil(len(cc[size_key]) / columns)
 
         for tab_mode, tab in tabs.items():
 
@@ -849,81 +945,66 @@ def render_cells_map(parameters, box):
             else:
                 tab.classes(remove='active')
 
-        grid.style(f'--cols: {columns}; --rows: {rows};')
+        # The temperature tiles keep the size of the full set of places
+        set_grid(columns, len(cc[key]))
         grid.clear()
 
         view.tiles = []
-        view.free_shown = None
+        view.sensors_shown = None
 
-        if mode != "free":
+        if mode == "voltage":
 
             with grid:
-
-                for number in range(len(cc[key])):
-
-                    entry = new_tile(tile_names(mode, number)[0])
-
-                    if mode == "temperature":
-                        row, column = temperature_grid(number)
-                        entry[0].style(f'grid-row: {row}; grid-column: {column};')
-
-                    view.tiles.append(entry)
+                view.tiles = [new_tile() for _ in cc[key]]
 
         view.mode = mode
         view.summary = None
 
         update()
 
-    def update_free(free, unit, color):
+    def update_temperatures(unit, color):
         """
-        Tiles of the sensors with an unknown ROM code, rebuilt when the set
-        of sensors changes. Without such sensors the field is empty.
+        One tile per sensor that sends data, rebuilt when the set of sensors
+        changes. Returns the values of the sensors.
         """
 
-        places = [place for place, _ in free]
+        sensors = temperature_tiles(cc)
+        ids = [sensor_id for sensor_id, _, _ in sensors]
 
-        if places != view.free_shown:
+        if ids != view.sensors_shown:
 
             grid.clear()
 
-            view.tiles = []
-            view.free_shown = places
+            set_grid(CELL_TEMPERATURE_COLUMNS, max(len(cc["cell_temperatures"]), len(ids)))
+
+            view.sensors_shown = ids
 
             with grid:
+                view.tiles = [new_tile() for _ in sensors]
 
-                for _, (bus, _) in free:
-                    view.tiles.append(new_tile(f'{bus or "?"}.?'))
+        for entry, ((_, place), name, value) in zip(view.tiles, sensors):
+            paint(entry, tile_text("temperature", place, value), name, value, unit, color)
 
-        for entry, (_, (bus, value)) in zip(view.tiles, free):
-
-            name = f'Free sensor, bus {bus}' if bus else 'Free sensor, bus unknown'
-
-            paint(entry, name, value, unit, color)
+        return [value for _, _, value in sensors]
 
     def update():
 
         _, key, _, unit, color = CELLS_MAP_MODES[view.mode]
 
-        free = sorted(list(cc["free_temperatures"].items()), key=lambda item: item[0])
-        free_values = [value for _, (_, value) in free]
+        if view.mode == "temperature":
 
-        if view.mode == "free":
+            values = update_temperatures(unit, color)
 
-            update_free(free, unit, color)
-
-            labels = cells_map_summary(view.mode, free_values)
+            labels = cells_map_summary(view.mode, values, sensors=len(values))
 
         else:
 
             values = cc[key]
 
             for number, (entry, value) in enumerate(zip(view.tiles, values)):
-                paint(entry, tile_names(view.mode, number)[1], value, unit, color)
+                paint(entry, tile_text(view.mode, number, value), f'Группа {number}', value, unit, color)
 
-            # Max and min of the temperatures include the free sensors
-            extra = free_values if view.mode == "temperature" else ()
-
-            labels = cells_map_summary(view.mode, values, extra)
+            labels = cells_map_summary(view.mode, values)
 
         if labels != view.summary:
 
@@ -939,12 +1020,13 @@ def render_cells_map(parameters, box):
     box.updates.append(update)
 
 
+
 def event_html(event):
 
     return spans_html(
         [
             (event.time, 'dim'),
-            (f'  {event.source:<7}', 'k'),
+            (f'  {event.source:<{SOURCE_WIDTH}}  ', 'k'),
         ]
         + event.parts
     )

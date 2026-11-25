@@ -65,7 +65,7 @@ def build_command_line(on_command=None):
         ui.label('>').classes('command-prompt')
 
         command_input = ui.input(
-            placeholder='/command line...'
+            placeholder='командная строка...'
         ).props(
             'borderless dense'
         ).classes(
